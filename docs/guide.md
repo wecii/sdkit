@@ -45,10 +45,10 @@ Two extra principles: **tokens are neither wasted nor starved** (section 18), an
 |---|---|---|
 | **Skill** | 4 | Instruction sets that run the task: `spec-driven-dev` (main flow, loaded progressively via `references/`), `incident-to-rule`, `scaffold-init`, `scaffold-doctor` |
 | **Role** | 10 | Tool-independent definitions under `core/roles/`: `orchestrator`, `analyst`, `scout`, `engineer`, `developer`, `test-writer`, `devsecops`, `reviewer`, `security-auditor`, `verifier`. Nine are generated as subagents; `verifier`'s strong-tier twin `verifier-deep` (via `deep: strong`) is generated too, so **10 role files** per host |
-| **Hook** | 18 + 1 | 18 checks that run automatically during tool steps and session boundaries in Claude Code (including `guard-readonly`, `usage-log`, `guard-budget`, `result-size`, `check-contract`, `value-report`) and the `adapt.sh` shim through which other hosts call the same hooks. Where there are no hooks, git hooks enforce most of the same rules |
+| **Hook** | 19 + 1 | 19 checks that run automatically during tool steps and session boundaries in Claude Code (including `guard-readonly`, `usage-log`, `guard-budget`, `guard-noisy`, `result-size`, `check-contract`, `value-report`) and the `adapt.sh` shim through which other hosts call the same hooks. Where there are no hooks, git hooks enforce most of the same rules |
 | **Verification engine** | 1 core + steps per stack | `scripts/verify-core.sh` (diff base, changed files, `verify.d`, green-result cache) + `stacks/<stack>/scripts/steps.sh` (the stack's own checks) |
 | **Stack** | 7 | `go`, `spring-boot` and `jvm` (Maven/Gradle), `python`, `nextjs`, `react-native` (the last two share the `stacks/_node/` helper) and `generic` if detection fails. Contract: `stacks/README.md` |
-| **Script** | 32 | `sdd.sh`, `resolve-base.sh`, `open-pr.sh`, `guard.sh`, `plan-waves.sh`, `worktree.sh`, `state.sh`, `parse-verdict.sh`, `check-plan-parity.sh`, `dod-check.sh`, `digest.sh`, `test-select.sh`, `adapter.sh`, `dispatch.sh`, `knowledge.sh`, `recover.sh`, `redact.sh`, `audit.sh`, `pr-check.sh`, `check-writes.sh`, `usage.sh`, `pricing.sh`, `telemetry.sh`, `contract.sh`, `workflow.sh`, `route.sh`, `memory.sh`, `lookup-cache.sh`, `run-role.sh` + `verify-core.sh` and `verify-lib.sh` (engine; not run directly) |
+| **Script** | 33 | `sdd.sh`, `resolve-base.sh`, `open-pr.sh`, `guard.sh`, `plan-waves.sh`, `worktree.sh`, `state.sh`, `parse-verdict.sh`, `check-plan-parity.sh`, `dod-check.sh`, `digest.sh`, `test-select.sh`, `adapter.sh`, `dispatch.sh`, `knowledge.sh`, `recover.sh`, `redact.sh`, `audit.sh`, `pr-check.sh`, `check-writes.sh`, `usage.sh`, `pricing.sh`, `telemetry.sh`, `contract.sh`, `workflow.sh`, `route.sh`, `memory.sh`, `lookup-cache.sh`, `capped.sh`, `run-role.sh` + `verify-core.sh` and `verify-lib.sh` (engine; not run directly) |
 | **Rules** | 4+ | `core/rules/`: `general`, `git`, `test-first`, `token-economy` (+ stack rules) |
 | **Templates** | | Project-side files to fill in for a new repo (`templates/`, `stacks/go/`, `core/rules/`) |
 | **Host** | 5 | `claude`, `codex`, `opencode`, `cursor`, `gemini`; role/guard format in `bin/emit/<host>.sh` + `core/hosts.env` (section 16) |
@@ -378,6 +378,7 @@ Hooks are originally **specific to Claude Code**. Gemini and Cursor call the sam
 | `value-report.sh` | SessionEnd, SessionStart | none | Value Report at session level (`scripts/report.sh`): on `SessionEnd` it marks the session as finished and stores its summary; on `SessionStart` it recovers old sessions cut off without an end signal as `interrupted`. Writes nothing to stdout, never blocks. | `VALUE_REPORT` | Silent unless `VALUE_REPORT` is `on`. Details: [design-report.md](design-report.md) |
 | `usage-log.sh` | Stop, SubagentStop | none | Writes token usage from the transcript to the `usage.sh` ledger, and with `TELEMETRY=1` also as an `agent.end` event (tokens, tool call count, estimated duration) (section 18) | `USAGE_LOG=1` or `TELEMETRY=1` | If neither is 1 |
 | `guard-budget.sh` | PreToolUse: Agent | **ask** (strict) / warning (guided) | Counts every subagent spawn (`state.sh spawn`) and checks the task token budget (`usage.sh budget`); asks when the limit is exceeded (section 18) | `MAX_SPAWNS`, `TOKEN_BUDGET_TASK` | If both are empty, `SDD_MODE=off`, or there is no active task |
+| `guard-noisy.sh` | PreToolUse: Bash | **ask** | Asks to run a command that matches `NOISY_CMD_PATTERNS` through `scripts/capped.sh`, so a long log does not stay in the session (a cost nudge, not a safety gate). Passes wrapped, piped-to-`tail`/`head`/`grep`, redirected and subagent calls | `NOISY_CMD_PATTERNS` | If empty or `SDD_MODE=off` |
 | `result-size.sh` | SubagentStop | none | Warns (does not block) if the role's last answer is longer than `SUBAGENT_RESULT_MAX_LINES` lines | `SUBAGENT_RESULT_MAX_LINES` | If empty |
 | `check-contract.sh` | PreToolUse: Agent; SubagentStop | **ask** (strict, only on an invalid handoff) / warning | Validates and records a handoff that carries a `CONTRACT:` line; checks the `HANDOFF-RESULT` line in the subagent's last answer. Does not touch the verdict or the phase | `CONTRACTS=1` | If empty, or the handoff has no `CONTRACT:` |
 
@@ -649,6 +650,9 @@ Generates `agents/*.md` (Claude) and `adapters/{codex,opencode,cursor,gemini}/` 
 | `TOKEN_BUDGET_WARN_PCT` **(personal)** | `70` | Warn from this percentage of the budget on |
 | `MAX_SPAWNS` **(personal)** | empty | Maximum subagent spawns per task; when exceeded, `strict` asks, `guided` warns. Empty = no limit |
 | `SUBAGENT_RESULT_MAX_LINES` **(personal)** | empty | `result-size` warns if a role's answer is longer than this |
+| `NOISY_CMD_PATTERNS` | empty | Comma-separated globs of commands with long output (`npm test*,go test*,pytest*`); `guard-noisy` asks to run them through `capped.sh`. Empty = off |
+| `CAPPED_LINES` **(personal)** | `40` | Lines `capped.sh` keeps of a command's output (failure lines come on top); shorter output is printed whole |
+| `CONTEXT_HINT` **(personal)** | `1` | `sdd.sh advance proposed|green` prints a one-line note on stderr that a `/clear` or new session loses nothing at this boundary |
 | `MEMORY` | `1` | If `1`, project memory is on (section 19); empty = off (`sdkit init --no-memory`) |
 | `MEMORY_DIR` | `memory` | Directory of the entries: relative to `<project-dir>` or an absolute path |
 | `MEMORY_VCS` | `commit` | `commit` = shared by the team, `ignore` = personal (`init --memory-vcs` writes the `.gitignore` line; can be changed later) |
@@ -923,6 +927,7 @@ All are off by default; the kit imposes no numbers, each team writes its own lim
 | `MAX_SPAWNS` **(personal)** | `state.sh <slug> spawn` counts every spawn; once the limit is exceeded, the next spawn is put to the user. No token measurement needed |
 | `SDD_MODE` | `strict` asks before the spawn that goes over the limit, `guided` only warns, `off` ignores both |
 | `SUBAGENT_RESULT_MAX_LINES` **(personal)** | The `result-size` hook warns on a long answer (does not block) |
+| `NOISY_CMD_PATTERNS` | The `guard-noisy` hook asks to run a matching command through `scripts/capped.sh`. Cost nudge, never a block. See `references/delegation.md`, "Keep this session thin" |
 
 In Claude Code the counting is done by the `guard-budget` hook on every `Agent` call. On other hosts the spawn point is `run-role.sh`: at the limit it stops with exit 3, and after the user approves it is rerun with `--ignore-budget`. If the host gives no token info, the ledger stays empty and the token budget stays silent; the kit does not guess. For the same reason, on Codex the token budget works only when a record comes from the `run-role.sh` CLI output; `MAX_SPAWNS` works on every host.
 

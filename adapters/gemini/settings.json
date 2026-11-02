@@ -67,6 +67,12 @@
             "name": "kit-pr",
             "command": "bash __KIT_HOOKS__/adapt.sh gemini guard-pr.sh",
             "timeout": 10000
+          },
+          {
+            "type": "command",
+            "name": "kit-noisy",
+            "command": "bash __KIT_HOOKS__/adapt.sh gemini guard-noisy.sh",
+            "timeout": 10000
           }
         ]
       }

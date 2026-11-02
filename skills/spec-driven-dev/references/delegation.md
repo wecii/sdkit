@@ -18,6 +18,14 @@ A spawn costs a role prompt, a handoff and a result to read. Do it yourself when
 - `SUBAGENT_RESULT_MAX_LINES` (`sdkit.env`) makes the `SubagentStop` hook warn when an answer is longer. It warns; it never blocks.
 - Scout answers: before spawning, `<kit>/scripts/lookup-cache.sh get <slug> "<question>"`; after, `put`. A hit costs nothing; the entry is dropped when HEAD or the uncommitted diff changes.
 
+## Keep this session thin
+Every token that enters this session is read again on every later turn, so a result carried for 100 turns costs 100 times its size. This session holds decisions and state; content stays in files or in a role's own context.
+- **Reading**: a file over ~150 lines is not read whole here. Ask `scout` (batch the questions), or read the range you need. A hit in `lookup-cache.sh` costs nothing.
+- **Running**: tests, builds, linters and anything that can print more than ~40 lines go through `<kit>/scripts/capped.sh -- <command>`. It prints the exit code, the failure lines and the tail, and stores the full log under `work/<slug>/out/cmd-*.log`; open the log only when that is not enough. `NOISY_CMD_PATTERNS` (`sdkit.env`) makes the `guard-noisy` hook ask for it on commands you list.
+- **Writing**: implementation goes to `developer` / `test-writer` / `devsecops`. This session keeps the plan, the gate and the 15-line answers.
+- **Boundaries**: after `advance proposed` and `advance green` the state is in files (`CONTEXT_HINT=1` prints a note). A `/clear`, a new session or a compaction there loses nothing; resume as below.
+- **Measure**: `<kit>/scripts/usage.sh context` shows which tool results this session carried and what carrying them cost (tokens x the turns after each). Cap or delegate the top entries.
+
 ## Budgets (all off until `sdkit.env` sets them)
 | Setting | Effect |
 |---|---|

@@ -67,6 +67,8 @@ sdkit report task|session|latest|history [--detailed|--json|--markdown]   # Valu
 <kit>/scripts/pricing.sh status                # price table: missing/stale/unpriced models/baseline (sdkit doctor --update-pricing refreshes it)
 <kit>/scripts/usage.sh prices                    # which price table is in force (pricing.json v2: model, provider, effective date)
 <kit>/scripts/usage.sh budget [slug]            # usage against TOKEN_BUDGET_TASK (exit 3 warning, 4 exceeded)
+<kit>/scripts/usage.sh context [transcript]     # which tool results a session carried and what carrying them cost (Claude Code)
+<kit>/scripts/capped.sh -- <command>            # run tests/builds; keep failures + tail in the session, full log in work/<slug>/out/
 <kit>/scripts/telemetry.sh summary [slug] [--json]  # run summary: phase/agent durations, tokens (measured/total), retries, failures, verification (needs TELEMETRY=1)
 <kit>/scripts/telemetry.sh archive <slug>         # before closeout: move the events under work/_archive/
 <kit>/bench/run.sh run all                         # simulated benchmark (free); real: --real --host H --yes
@@ -114,6 +116,7 @@ AGENT_<ROLE>_TIER=light|standard|strong       # sdkit.env: the tier (and so the 
 | `value-report` | Value Report session summary at session end/start (does not block, no stdout) | `VALUE_REPORT` ≠ `on` |
 | `usage-log` | token ledger and (`TELEMETRY=1`) the `agent.end` event (does not block) | `USAGE_LOG` and `TELEMETRY` ≠ `1` |
 | `guard-budget` | ask/warning: `MAX_SPAWNS` or `TOKEN_BUDGET_TASK` exceeded | both empty |
+| `guard-noisy` | ask: a long-output command (tests, build) outside `capped.sh` | `NOISY_CMD_PATTERNS` empty |
 | `result-size` | warning: role answer too long | `SUBAGENT_RESULT_MAX_LINES` empty |
 | `check-contract` | ask (strict, invalid handoff) / warning: the handoff or the `HANDOFF-RESULT` line does not match the contract; does not touch the verdict | `CONTRACTS` ≠ `1` or no `CONTRACT:` in the handoff |
 | `session-context`, `check-tools` | info | |

@@ -13,6 +13,10 @@
       {
         "command": "__KIT_HOOKS__/adapt.sh cursor guard-pr.sh",
         "timeout": 10
+      },
+      {
+        "command": "__KIT_HOOKS__/adapt.sh cursor guard-noisy.sh",
+        "timeout": 10
       }
     ],
     "beforeReadFile": [

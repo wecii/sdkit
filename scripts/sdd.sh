@@ -266,6 +266,11 @@ cmd_advance() {
   [ "$target" = done ] && tele task.end --outcome completed
   [ "$target" = done ] && report_final completed
   if [ "$target" = done ]; then rm -f "$PROJECT_DIR/$KIT_DIR/.frozen"; rm -rf "$STATE_DIR"; echo "task closed"; else echo "phase: $target"; fi
+  # a phase boundary is the cheapest place to drop the conversation: everything decided is in files now (stderr: stdout stays the phase line)
+  if [ "${CONTEXT_HINT:-}" = 1 ]; then case "$target" in
+    proposed) echo "boundary: the proposal is in $(dirname "$(get .proposal)")/ and the plan in $KIT_DIR/work/. If this session is large, /clear (or a new session) and resume with the task id loses nothing." >&2 ;;
+    green) echo "boundary: tests are green. Verification starts from files only, so a /clear or new session here loses nothing." >&2 ;;
+  esac; fi
 }
 
 # After a BLOCK: the one automatic retry (state.sh retry) may already be spent; then the next step is the user, not another run.

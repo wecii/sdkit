@@ -152,6 +152,15 @@ Nothing changes until you opt in. `ROUTING=off` stays the default, so `run-role.
 - **Exit codes of `run-role.sh` with `ROUTING=on`:** 7 = valid evidence already exists (nothing to run, do not retry), 8 = routing declined to run and there is no valid result (never a pass). Scripts that call `run-role.sh` must handle both.
 - **Turning it on:** set `RUN_ROLE_HOST` (and `VERIFIER_HOST` for independent roles), then `ROUTING=on`; look at a decision first with `route.sh explain --role <role>`. Details and limits: [design-routing.md](design-routing.md).
 
+## 1.3.6: context economy (capped command output, thin orchestrator, `usage.sh context`)
+
+Why: the orchestrator session is most of a task's cost, and it comes from carrying content, not from producing it: each token that enters the session is re-read on every later turn.
+
+- **New settings, added by `sdkit upgrade`:** `NOISY_CMD_PATTERNS` (`sdkit.env`, empty = off), `CAPPED_LINES=40` and `CONTEXT_HINT=1` (`sdkit.local.env`). Nothing blocks and nothing changes until you list commands in `NOISY_CMD_PATTERNS`, e.g. `"npm test*,go test*,pytest*"`; the new `guard-noisy` hook then asks to run them through `scripts/capped.sh`.
+- **New:** `scripts/capped.sh -- <command>` (keeps the exit code, the failure lines and the tail; the full log goes to `work/<slug>/out/`), `usage.sh context` (which tool results a Claude Code session carried and what carrying them cost), a stderr note at the `proposed` and `green` boundaries of `sdd.sh advance` (`CONTEXT_HINT=1`).
+- **Skill rules:** the orchestrator no longer reads files over ~150 lines whole, and writes only a one-file-plus-test `low` change itself; everything else goes to the roles (`references/delegation.md`, "Keep this session thin").
+- **Copy-mode and Cursor/Gemini projects:** run `sdkit sync` so the new hook is registered; the Claude Code plugin and the OpenCode plugin pick it up with the update.
+
 ## 1.3.5: role tiers in `sdkit.env`, task sizes required with ROUTING=on
 
 - **New settings, added by `sdkit upgrade` with the roles' own tiers:** `AGENT_ANALYST_TIER`, `AGENT_DEVELOPER_TIER`, `AGENT_DEVSECOPS_TIER`, `AGENT_ENGINEER_TIER`, `AGENT_REVIEWER_TIER`, `AGENT_SCOUT_TIER`, `AGENT_SECURITY_AUDITOR_TIER`, `AGENT_TEST_WRITER_TIER`, `AGENT_VERIFIER_TIER` (`light` / `standard` / `strong`). Change one to move that role; nothing changes until you do. Claude Code roles pick the model of the tier (`haiku` / `sonnet` / `opus`).

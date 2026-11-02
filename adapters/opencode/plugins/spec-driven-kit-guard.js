@@ -14,8 +14,8 @@ const BY_TOOL = {
   write: { tool: "Write", scripts: ["guard-phase.sh", "guard-secrets.sh", "guard-protected.sh", "frozen-tests.sh"] },
   edit: { tool: "Edit", scripts: ["guard-phase.sh", "guard-secrets.sh", "guard-protected.sh", "frozen-tests.sh"] },
   patch: { tool: "Edit", scripts: ["guard-phase.sh", "guard-secrets.sh", "guard-protected.sh", "frozen-tests.sh"] },
-  shell: { tool: "Bash", scripts: ["guard-prod.sh", "guard-git.sh", "guard-pr.sh"] },
-  bash: { tool: "Bash", scripts: ["guard-prod.sh", "guard-git.sh", "guard-pr.sh"] },
+  shell: { tool: "Bash", scripts: ["guard-prod.sh", "guard-git.sh", "guard-pr.sh", "guard-noisy.sh"] },
+  bash: { tool: "Bash", scripts: ["guard-prod.sh", "guard-git.sh", "guard-pr.sh", "guard-noisy.sh"] },
 }
 
 export const SpecDrivenKitGuard = async ({ directory }) => {

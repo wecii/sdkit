@@ -49,7 +49,7 @@ If `project.md` has no risk rubric, stop and ask the user to define one; never i
 
 ## 1. Explore
 
-Invoke `openspec-explore` with the brief. Ground the problem in the real code. Use `scout` for "where is / who calls" questions instead of reading broadly. Do not skip this for `low`; wrong assumptions get caught here.
+Invoke `openspec-explore` with the brief. Ground the problem in the real code. Use `scout` for "where is / who calls" questions instead of reading broadly; do not read a file over ~150 lines whole in this session, ask `scout` or read the range you need (`references/delegation.md`, "Keep this session thin"). Do not skip this for `low`; wrong assumptions get caught here.
 
 ## 2. Plan gate (before any proposal)
 
@@ -69,7 +69,7 @@ Branch per `rules/git.md` and the "Release flow" section of `project.md`: `git f
 
 **Testability check before the first test** (`rules/test-first.md`). If the code under test cannot be exercised without real infrastructure (for example a handler takes a concrete, unmockable client), stop before writing throwaway tests, name exactly what blocks it, and give the user 2-3 options with the host's question tool (add a small interface scoped to the call site / skip automated coverage and record the gap / add integration-test infrastructure). Only then proceed; update the DoD item's Verified-by if coverage changes.
 
-Delegation: before the first spawn read `references/delegation.md` (spawn or not, result size, budgets, cache). Tests to `test-writer`, code to `developer`, pipeline/infra files to `devsecops`, each with a handoff brief (with `CONTRACTS=1` also the contract lines and the result line: `references/contract.md`; a valid contract is never a verification). For small `low` tasks you may do these yourself in one session. To run independent tasks at the same time follow `references/parallel.md` (`<kit>/scripts/plan-waves.sh` for waves, `<kit>/scripts/worktree.sh` for isolation); otherwise run tasks in order.
+Delegation: before the first spawn read `references/delegation.md` (spawn or not, result size, budgets, cache, keeping this session thin). Tests to `test-writer`, code to `developer`, pipeline/infra files to `devsecops`, each with a handoff brief (with `CONTRACTS=1` also the contract lines and the result line: `references/contract.md`; a valid contract is never a verification). Only a change of one file plus its test, at `low` risk, is yours to write in this session. Run tests, builds and linters through `<kit>/scripts/capped.sh -- <command>`: the log stays in a file, the conversation gets the failures and the tail. To run independent tasks at the same time follow `references/parallel.md` (`<kit>/scripts/plan-waves.sh` for waves, `<kit>/scripts/worktree.sh` for isolation); otherwise run tasks in order.
 
 ### `low` risk
 1. Test(s) from the DoD. `<sdd> advance red --test-cmd "<command running them>"` runs it and refuses unless it FAILS; check the log for the right reason (not a compile error). Production code is editable only after this.

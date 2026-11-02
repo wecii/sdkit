@@ -92,7 +92,7 @@ Budget exhaustion, evidence reuse and recovery branches are in the guide's secon
 | Which verifier / reviewer / auditor PASS is missing | `$KIT/scripts/sdd.sh evidence` |
 | What the task requires, what each move needs | `$KIT/scripts/sdd.sh policy`, `sdd.sh transitions` |
 | Why was I stopped | the refusal message names the missing step; `sdd.sh gate edit <path>` re-asks |
-| Tokens, cache, cost, budget | `$KIT/scripts/usage.sh report <task>`, `usage.sh budget` |
+| Tokens, cache, cost, budget | `$KIT/scripts/usage.sh report <task>`, `usage.sh budget`, `usage.sh context` (what the session carried), `capped.sh` (cap command output) |
 | Resume record, interrupted work | `$KIT/scripts/state.sh <task> show`, `$KIT/scripts/recover.sh scan` |
 | Result | `sdkit report task <task>` |
 
