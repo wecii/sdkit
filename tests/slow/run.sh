@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Smoke checks for the kit's deterministic scripts. Each case states whether it must pass or must fail.
-# Usage: tests/run.sh      (exit 1 if any case misbehaves)
+# Usage: tests/slow/run.sh      (exit 1 if any case misbehaves)
 set -u
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
-export PATH="$(cd "$(dirname "$0")" && pwd)/stubs:$PATH" OPENSPEC_STUB_LOG="${TMPDIR:-/tmp}/openspec-stub.$$.log"   # init must not need the real openspec
+export PATH="$(cd "$(dirname "$0")/.." && pwd)/stubs:$PATH" OPENSPEC_STUB_LOG="${TMPDIR:-/tmp}/openspec-stub.$$.log"   # init must not need the real openspec
 pass=0; failed=0
 # expect <name> <exit-code> <command...>
 expect() { local name="$1" want="$2"; shift 2; "$@" >"$tmp/out" 2>&1; local got=$?

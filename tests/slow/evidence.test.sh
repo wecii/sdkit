@@ -11,7 +11,7 @@ check() { local n="$1"; shift; if "$@" >/dev/null 2>&1; then ok "$n"; else bad "
 nocheck() { local n="$1"; shift; if "$@" >/dev/null 2>&1; then bad "$n (should have failed)"; else ok "$n"; fi; }
 eq() { if [ "$2" = "$3" ]; then ok "$1"; else bad "$1 (got '$2', wanted '$3')"; fi; }
 
-ksum() { (cd "$KIT" && find scripts hooks core agents adapters skills bin tests/run.sh -type f | sort | xargs shasum | shasum | cut -d' ' -f1); }
+ksum() { (cd "$KIT" && find scripts hooks core agents adapters skills bin tests/slow/run.sh -type f | sort | xargs shasum | shasum | cut -d' ' -f1); }
 KSUM0="$(ksum)"
 SDD="$KIT/scripts/sdd.sh"; WF="$KIT/scripts/workflow.sh"; PV="$KIT/scripts/parse-verdict.sh"; RR="$KIT/scripts/run-role.sh"
 export SDKIT_GREEN="${TMPDIR:-/tmp}/sdkit-green.$$"   # RED fails until the test marks it green; GREEN re-runs the same command (sdd.sh binds them)

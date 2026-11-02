@@ -40,11 +40,11 @@ Second rule: **do not overwrite project-side files.** `init.sh` never overwrites
 
 ## Verification (before submitting)
 
-Smoke test first: `tests/run.sh` exercises the scripts (verdict, plan parity, write scope, state, usage), the hooks, `run-role.sh --dry-run` and `init` with fixtures (stating for each case whether it should pass or fail); if you changed a script or hook, add a case there. Then by hand:
+Smoke test first: `tests/slow/run.sh` exercises the scripts (verdict, plan parity, write scope, state, usage), the hooks, `run-role.sh --dry-run` and `init` with fixtures (stating for each case whether it should pass or fail); if you changed a script or hook, add a case there. Then by hand:
 
 ```bash
-tests/run.sh                                                        # smoke test
-tests/sdd.test.sh && tests/slow/shared.test.sh                          # phase machine, shared files
+tests/slow/run.sh                                                        # smoke test
+tests/slow/sdd.test.sh && tests/slow/shared.test.sh                          # phase machine, shared files
 tests/memory.test.sh && tests/budget.test.sh                       # project memory, token budget, hook wiring
 tests/sdkit-dir.test.sh                                            # .sdkit layout, appending missing settings, old layout, --migrate
 tests/slow/risk-floor.test.sh                                            # risk floor (RISK_FLOOR_GLOBS): label floor, CI bypass attempts
@@ -79,7 +79,7 @@ jq . hooks/hooks.json .claude-plugin/*.json templates/settings.*.json >/dev/null
 shellcheck hooks/*.sh bin/*.sh scripts/*.sh                         # if installed
 ```
 
-Speed: a file in `tests/` must stay under 30 s. `tests/fast.sh` runs them in parallel, prints each file's time and flags one over the budget (`-b SEC`); you never need the whole suite while developing: `scripts/test-select.sh run` runs only the suites your change maps to (`tests/test-map.conf`), several at a time (`--jobs N` or `TEST_SELECT_JOBS`, default a third of the cores, `1` = one after another; results always print in map order), and reuses a green result for an identical tree. `tests/slow/` holds the end-to-end tests whose single run is a whole simulated workflow (14-40 s each); they stay out of the everyday loop and run with `tests/fast.sh --all` (CI, before a release). `tests/prof.sh <file>` shows where one file spends its time, section by section. A file whose sections build their own repositories can run them at the same time: one line after `set -u` (`[ -n "${PSEC_ONLY:-}" ] || exec "$(dirname "$0")/lib/psections.sh" "$0" "$@"`, see `tests/costroute.test.sh`) hands it to `tests/lib/psections.sh`, which chains a section to an earlier one when it uses a variable or function that section defines (`PSEC_DEBUG=1` says why) and runs the chains in parallel; check that the totals match a sequential run (`PSEC_ONLY=x bash <file>`). `tests/run.sh` is still over the budget and is its own job.
+Speed: a file in `tests/` must stay under 30 s. `tests/fast.sh` runs them in parallel, prints each file's time and flags one over the budget (`-b SEC`); you never need the whole suite while developing: `scripts/test-select.sh run` runs only the suites your change maps to (`tests/test-map.conf`), several at a time (`--jobs N` or `TEST_SELECT_JOBS`, default a third of the cores, `1` = one after another; results always print in map order), and reuses a green result for an identical tree. `tests/slow/` holds the end-to-end tests that are too long for the everyday loop (the smoke tests `run.sh`, `sdd.test.sh`, `workflow.test.sh`, `reservation.test.sh`, the simulated-workflow benchmarks and the other long suites): `tests/fast.sh` and `scripts/test-select.sh run` leave them out, `tests/fast.sh --all` / `test-select.sh run --all` run them (CI, before a release). `tests/prof.sh <file>` shows where one file spends its time, section by section. A file whose sections build their own repositories can run them at the same time: one line after `set -u` (`[ -n "${PSEC_ONLY:-}" ] || exec "$(dirname "$0")/lib/psections.sh" "$0" "$@"`, see `tests/costroute.test.sh`) hands it to `tests/lib/psections.sh`, which chains a section to an earlier one when it uses a variable or function that section defines (`PSEC_DEBUG=1` says why) and runs the chains in parallel; check that the totals match a sequential run (`PSEC_ONLY=x bash <file>`). `tests/slow/run.sh` is still over the budget and is its own job.
 
 Then try it end to end in a throwaway repo:
 
@@ -111,7 +111,7 @@ A guard is not trusted until it has been seen to "fail and then pass": try both 
 4. Guard wiring: if the host does not resemble the Claude hook JSON, add a case to `hooks/adapt.sh` or write a plugin like OpenCode's; otherwise only the git hooks (`adapters/git/`) remain.
 5. A `case` for the host in `scripts/run-role.sh` (headless run flags) and a check with `--dry-run`.
 6. The table in `skills/spec-driven-dev/references/hosts.md`, `README.md`, `docs/guide.md` §13, §14, §16 and the table in `core/roles/README.md`.
-7. Cases in `tests/run.sh`: `run-role.sh --dry-run`, `init.sh --host <host>` output, the `adapt.sh` input if any. If you did not try it on a live install, mark it as not validated in the README "Limits" and in guide.md §13.
+7. Cases in `tests/slow/run.sh`: `run-role.sh --dry-run`, `init.sh --host <host>` output, the `adapt.sh` input if any. If you did not try it on a live install, mark it as not validated in the README "Limits" and in guide.md §13.
 
 ## Adding a new stack
 
@@ -120,7 +120,7 @@ A guard is not trusted until it has been seen to "fail and then pass": try both 
 3. `hooks/check-tools.sh` reads the `required|` / `optional|` lines in `scripts/tools.sh`; a missing tool is a `warn`, not a `fail`.
 4. `permissions.txt`: patterns to add to the Claude `settings.json` "allow" list (their narrowest form).
 5. Shared logic stays in `scripts/verify-core.sh`; a stack only writes `stack_run`. Node-based stacks share `stacks/_node/scripts/node-lib.sh`.
-6. `templates/sdkit.env` (if there is a new stack setting), `README.md`, `docs/guide.md` §14 and `docs/cheatsheet.md`; a fixture can be added to `tests/run.sh`.
+6. `templates/sdkit.env` (if there is a new stack setting), `README.md`, `docs/guide.md` §14 and `docs/cheatsheet.md`; a fixture can be added to `tests/slow/run.sh`.
 
 ## Versioning and release
 

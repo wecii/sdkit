@@ -112,7 +112,7 @@ A `workflow` section was added to the `telemetry.sh summary` output: profile, de
 
 135 cases, all passed: the transition table and every invalid target **from every phase** (state unchanged), every valid transition, reason codes, `start` validation; risk × profile interaction (small + medium/high refusal, risk floor, high-assurance low, high's design requirement); independent verification gates (no-verdict / BLOCK / stale / re-verification, attestation and `ci-check`); role × profile × `CONTRACTS` matrix, hook (ask/guided/off, scout, non-kit agent, valid/invalid handoff), `run-role.sh --dry-run` (exit 2 / warning / old behaviour); a valid contract not passing verification; interrupted agent (`agents-pending`, `close`, single retry, does not block in standard); concurrency (4 simultaneous `start`s → 1, 6 simultaneous `advance`s → 1 event, `_verdict` is not lost); telemetry; old state file (no profile) and partial install without `workflow.sh`.
 
-Run: the `tests/run.sh`, `sdd`, `shared`, `sdkit-dir`, `risk-floor`, `hardening`, `budget`, `memory`, `telemetry`, `contract`, `workflow` suites and `bin/build-adapters.sh --check`: all passed: run.sh 109, budget 45, contract 197, hardening 53, memory 38, risk-floor 76, sdd 52, sdkit-dir 64, shared 29, telemetry 118, workflow 135; adapter consistency up to date.
+Run: the `tests/slow/run.sh`, `sdd`, `shared`, `sdkit-dir`, `risk-floor`, `hardening`, `budget`, `memory`, `telemetry`, `contract`, `workflow` suites and `bin/build-adapters.sh --check`: all passed: run.sh 109, budget 45, contract 197, hardening 53, memory 38, risk-floor 76, sdd 52, sdkit-dir 64, shared 29, telemetry 118, workflow 135; adapter consistency up to date.
 
 ## 8. Benchmark
 

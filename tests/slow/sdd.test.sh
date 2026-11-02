@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# End-to-end check of the phase machine and its hooks in a throwaway repo. Run: tests/sdd.test.sh
+# End-to-end check of the phase machine and its hooks in a throwaway repo. Run: tests/slow/sdd.test.sh
 set -u
-KIT="$(cd "$(dirname "$0")/.." && pwd)"
+KIT="$(cd "$(dirname "$0")/../.." && pwd)"
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 pass=0; fail=0
 ok()  { pass=$((pass + 1)); printf '  ok   %s\n' "$1"; }

@@ -16,10 +16,10 @@
 # Exit: 0 all green (or nothing to run), 1 a command failed, 2 usage / no map / no @all.
 set -u
 mode="${1:-}"; shift 2>/dev/null || true
-map=""; base=HEAD; files=""; tier=""; nocache=0
+map=""; base=HEAD; files=""; tier=""; nocache=0; allslow=0
 cores="$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)"; jobs="${TEST_SELECT_JOBS:-$(( cores / 3 < 1 ? 1 : cores / 3 ))}"   # commands run this many at a time (--jobs N, TEST_SELECT_JOBS; 1 = in order)
-while [ $# -gt 0 ]; do case "$1" in --map) map="$2"; shift ;; --base) base="$2"; shift ;; --files) files="$2"; shift ;; --tier) tier="$2"; shift ;; --no-cache) nocache=1 ;; --jobs) jobs="$2"; shift ;; *) echo "test-select: unknown option $1" >&2; exit 2 ;; esac; shift; done
-case "$mode" in list|run) ;; *) echo "usage: test-select.sh list|run [--map F] [--base REF|--files \"a b\"] [--tier T1|T3] [--no-cache] [--jobs N]" >&2; exit 2 ;; esac
+while [ $# -gt 0 ]; do case "$1" in --map) map="$2"; shift ;; --base) base="$2"; shift ;; --files) files="$2"; shift ;; --tier) tier="$2"; shift ;; --no-cache) nocache=1 ;; --all) allslow=1 ;; --jobs) jobs="$2"; shift ;; *) echo "test-select: unknown option $1" >&2; exit 2 ;; esac; shift; done
+case "$mode" in list|run) ;; *) echo "usage: test-select.sh list|run [--map F] [--base REF|--files \"a b\"] [--tier T1|T3] [--no-cache] [--jobs N] [--all]" >&2; exit 2 ;; esac
 top="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"; cd "$top" || exit 2
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 KIT_DIR=.sdkit; [ -f "$here/env.sh" ] && { . "$here/env.sh" 2>/dev/null; SDKIT_ENV_QUIET=1 sdkit_env_load "$top" 2>/dev/null; }
@@ -61,6 +61,13 @@ done <<< "$files"
 cmds=""
 if [ "$full" = 1 ]; then cmds="$all"; else cmds="$sel"; fi
 [ -n "$always" ] && cmds="$cmds"$'\n'"$always"
+# the slow end-to-end suites (tests/slow/) only run on request: --all, or the T3 tier (milestone / release)
+leftout=0
+if [ "$allslow" = 0 ] && [ "$tier" != T3 ]; then
+  kept=""; while IFS= read -r c; do case "$c" in *tests/slow/*) leftout=$((leftout + 1)) ;; *) kept="$kept$c"$'\n' ;; esac; done <<< "$(printf '%s\n' "$cmds" | sed 's/[[:space:]]*;;[[:space:]]*/\n/g')"
+  cmds="$kept"
+  [ "$leftout" = 0 ] || echo "test-select: $leftout slow suite(s) in tests/slow/ left out (--all runs them)" >&2
+fi
 cmds="$(printf '%s\n' "$cmds" | sed 's/[[:space:]]*;;[[:space:]]*/\n/g' | sed -E 's/^[[:space:]]+|[[:space:]]+$//g' | awk 'NF && !seen[$0]++')"
 # A map rule can name a test script that no longer exists. Deleted IN THIS CHANGE (the path is among the changed files and gone from disk) = a deliberate deletion:
 # that command is dropped with a note. Missing for any other reason = a broken map or checkout: it stays and FAILS at its turn (see the loop), never hidden.
@@ -75,7 +82,7 @@ cmds="$(printf '%s' "$kept" | awk 'NF')"
 t="T1"; [ "$full" = 1 ] && t="T3"
 nall="$(printf '%s\n' "$all" | sed 's/[[:space:]]*;;[[:space:]]*/\n/g' | awk 'NF' | wc -l | tr -d ' ')"; ncmd="$(printf '%s\n' "$cmds" | awk 'NF' | wc -l | tr -d ' ')"
 skipped=$(( nall > ncmd ? nall - ncmd : 0 )); [ "$full" = 1 ] && skipped=0
-[ -n "$cmds" ] || { echo "tests: tier=T0 (no test covers: $(printf '%s' "$files" | tr '\n' ' ')) commands=0"; exit 0; }
+[ -n "$cmds" ] || { echo "tests: tier=T0 (no test covers: $(printf '%s' "$files" | tr '\n' ' ')${leftout:+; $leftout slow suite(s) only: --all}) commands=0"; exit 0; }
 if [ "$mode" = list ]; then echo "# tier=$t ${why:+reason: $why}"; printf '%s\n' "$cmds"; exit 0; fi
 
 tree_key() {  # exact tree + map + command

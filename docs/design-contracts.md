@@ -190,7 +190,7 @@ Reading notes: (a) in a contracted handoff some existing prose lines turn into s
 | T6 `tests/slow/contract.test.sh` (197 cases) | done |
 | T7 docs: this file, `references/contract.md`, `handoff.md`, `hosts.md`, `SKILL.md`, `guide.md`, `cheatsheet.md`, `README.md`, `CONTRIBUTING.md`, `upgrading.md`, `design-telemetry.md` | done |
 
-Checks run: `tests/run.sh` 109, `sdd` 52, `shared` 29, `memory` 38, `budget` 45, `sdkit-dir` 64, `risk-floor` 76, `hardening` 53, `telemetry` 118 (all with the same counts as before F02, none broken), **`contract` 197**; all pass. `bin/build-adapters.sh --check` is up to date (role files not touched). `bash -n` and `jq .` are clean; `shellcheck` is not installed on this machine and was not run.
+Checks run: `tests/slow/run.sh` 109, `sdd` 52, `shared` 29, `memory` 38, `budget` 45, `sdkit-dir` 64, `risk-floor` 76, `hardening` 53, `telemetry` 118 (all with the same counts as before F02, none broken), **`contract` 197**; all pass. `bin/build-adapters.sh --check` is up to date (role files not touched). `bash -n` and `jq .` are clean; `shellcheck` is not installed on this machine and was not run.
 
 ## 10. Known limits and remaining risks
 

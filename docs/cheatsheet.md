@@ -129,7 +129,7 @@ Hooks are safety nets, not a security boundary (regex-based).
 <kit>/bin/doctor.sh <repo>                     # install check
 <kit>/bin/upgrade.sh <repo>                    # upgrade to a new kit version (refresh the plugin with /plugin first)
 <kit>/bin/build-adapters.sh --check            # (kit maintainer) are the roles and generated files in sync
-<kit>/tests/run.sh                             # (kit maintainer) script/hook/init smoke test
+<kit>/tests/slow/run.sh                             # (kit maintainer) script/hook/init smoke test
 ```
 
 `verify.d` script: `<project-dir>/verify.d/NN-name.sh`, `chmod +x`, `. "$VERIFY_LIB"`, prints `FAIL: ...` / `WARN: ...` for a problem.

@@ -245,8 +245,8 @@ Missing (really): an event log of phase transitions, cost history after closeout
 
 | Check | Result |
 |---|---|
-| `tests/run.sh` | 109 passed, 0 failed |
-| `tests/sdd.test.sh` / `shared` / `memory` / `budget` / `sdkit-dir` | 52 / 29 / 38 / 45 / 64 passed, 0 failed |
+| `tests/slow/run.sh` | 109 passed, 0 failed |
+| `tests/slow/sdd.test.sh` / `shared` / `memory` / `budget` / `sdkit-dir` | 52 / 29 / 38 / 45 / 64 passed, 0 failed |
 | `bin/build-adapters.sh --check` | adapters up to date (10 role files) |
 | Experiment B1: `guard-pr.sh` ← `parse-verdict.sh … --record` | `deny` |
 | Experiment B2: `record-verdict.sh` ← DoD `FAIL` + `VERDICT: PASS` | `PASS` written to the state file; `parse-verdict.sh` exit 2 |

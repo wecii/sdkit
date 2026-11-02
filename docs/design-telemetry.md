@@ -143,7 +143,7 @@ Result file `{scenario, mode, host, deterministic, timing, summary}`. `determini
 | T6 docs: this file, `guide.md` (§2, §9, §10, §15, §18), `cheatsheet.md`, `README.md`, `CONTRIBUTING.md`, `upgrading.md` | done |
 | T7 fix so `sdkit_lock` does not wait on an unwritable directory | done |
 
-Checks run: `tests/run.sh` 109, `sdd` 52, `shared` 29, `memory` 38, `budget` 45, `sdkit-dir` 64, `risk-floor` 76, `hardening` 53, **`telemetry` 118**; all passed, none broke. `bin/build-adapters.sh --check` up to date (role files not touched).
+Checks run: `tests/slow/run.sh` 109, `sdd` 52, `shared` 29, `memory` 38, `budget` 45, `sdkit-dir` 64, `risk-floor` 76, `hardening` 53, **`telemetry` 118**; all passed, none broke. `bin/build-adapters.sh --check` up to date (role files not touched).
 
 ### Simulated benchmark results (fixture; NOT a real measurement)
 
