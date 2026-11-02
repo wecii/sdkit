@@ -152,6 +152,11 @@ Nothing changes until you opt in. `ROUTING=off` stays the default, so `run-role.
 - **Exit codes of `run-role.sh` with `ROUTING=on`:** 7 = valid evidence already exists (nothing to run, do not retry), 8 = routing declined to run and there is no valid result (never a pass). Scripts that call `run-role.sh` must handle both.
 - **Turning it on:** set `RUN_ROLE_HOST` (and `VERIFIER_HOST` for independent roles), then `ROUTING=on`; look at a decision first with `route.sh explain --role <role>`. Details and limits: [design-routing.md](design-routing.md).
 
+## 1.3.5: role tiers in `sdkit.env`, task sizes required with ROUTING=on
+
+- **New settings, added by `sdkit upgrade` with the roles' own tiers:** `AGENT_ANALYST_TIER`, `AGENT_DEVELOPER_TIER`, `AGENT_DEVSECOPS_TIER`, `AGENT_ENGINEER_TIER`, `AGENT_REVIEWER_TIER`, `AGENT_SCOUT_TIER`, `AGENT_SECURITY_AUDITOR_TIER`, `AGENT_TEST_WRITER_TIER`, `AGENT_VERIFIER_TIER` (`light` / `standard` / `strong`). Change one to move that role; nothing changes until you do. Claude Code roles pick the model of the tier (`haiku` / `sonnet` / `opus`).
+- **`ROUTE_REQUIRE_SIZE=1`:** with `ROUTING=on` (the default since 1.3.2) and `ROUTE_POLICY=tiered`, `sdd.sh advance proposed` now refuses a `tasks.md` that has a `role:` task without `size: small|medium|large` (the orchestrator used to be able to skip `references/model-routing.md`). Give the tasks a size, or set `ROUTE_REQUIRE_SIZE=0` to keep the old behaviour. The `engineer` role now writes `size:` with `role:`, `writes:` and `after:`.
+
 ## 1.3.4: test fixes only
 
 No manual step, no change to the scripts. The first full run (`tests/fast.sh --all`) found four test problems, none in the kit: `install.test.sh` counted `claude` lines and did not expect the routing line that `ROUTING=on` (the default since 1.3.2) prints, `recover.test.sh` gave `advance green` a different command than the one `red` was bound to, `reservation.test.sh` signalled `run-role.sh` after a fixed 3 s instead of waiting until it had reserved, and `report.test.sh` timed the machine under load. All four are fixed.
