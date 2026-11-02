@@ -10,7 +10,7 @@ printf 'BASE_BRANCH=main\nSTACK=generic\nSDD_MODE=strict\nPARALLEL=on\n' > .sdki
 echo a > src/a.sh; printf '# P\n## Definition of Done\n- D1: a | Verified by: unit test\n' > openspec/changes/t1/proposal.md; git add -A; git commit -qm i; git checkout -qb feat
 export CLAUDE_PROJECT_DIR="$R"
 "$KIT/scripts/state.sh" t1 init medium feat >/dev/null; "$SDD" start t1 --risk medium --proposal openspec/changes/t1/proposal.md >/dev/null; "$SDD" advance proposed >/dev/null
-"$SDD" advance red --test-cmd false >/dev/null; echo x >> src/a.sh; "$SDD" advance green --test-cmd true >/dev/null
+M="$T/green.mark"; "$SDD" advance red --test-cmd "[ -f '$M' ]" >/dev/null; echo x >> src/a.sh; touch "$M"; "$SDD" advance green >/dev/null   # green re-runs the command red was bound to
 "$SDD" _evidence verifier BLOCK >/dev/null 2>&1
 before="$(jq -c '.evidence' .sdkit/.sdd/state.json)"
 # interrupted: a spawn registered long ago, a handoff issued and never answered, a dispatch claim never finished

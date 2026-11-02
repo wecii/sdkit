@@ -85,6 +85,8 @@ echo "run-role closes the decision on every way out"
 use "$(newrepo r)"; cfg ROUTE_COST_ENFORCE=hard ROUTE_BUDGET_COST=10 ROUTE_RESERVE_USD=0.5
 printf 'Do a thing.\n' > h.md
 held() { jq -s '([.[] | select(.type == "reserve") | .id]) - ([.[] | select(.type == "release") | .id]) | length' .sdkit/work/_misc/reservations.jsonl 2>/dev/null || echo 0; }
+# wait until the run has reserved (poll, up to 40 s) and its host has had a moment to start: a fixed sleep raced with run-role's start-up, which takes seconds on a busy machine
+wait_held() { local i=0; while [ "$(held)" != 1 ] && [ "$i" -lt 130 ]; do sleep 0.3; i=$((i + 1)); done; sleep 1; }
 printf '#!/bin/sh\necho "{\\"result\\":\\"ok\\",\\"usage\\":{\\"input_tokens\\":10,\\"output_tokens\\":5}}"\n' > "$T/bin/claude"
 "$RR" developer --handoff h.md --rerun t >/dev/null 2>&1; eq "success: exit 0"          "$?" 0
 eq "…reservation released"                                    "$(held)" 0
@@ -92,13 +94,13 @@ printf '#!/bin/sh\necho boom >&2\nexit 9\n' > "$T/bin/claude"
 "$RR" developer --handoff h.md --rerun t >/dev/null 2>&1; eq "failure: the host status is preserved (9)" "$?" 9
 eq "…reservation released"                                    "$(held)" 0
 printf '#!/bin/sh\nsleep 30\n' > "$T/bin/claude"
-"$RR" developer --handoff h.md --rerun t >/dev/null 2>&1 & rp=$!; sleep 3
+"$RR" developer --handoff h.md --rerun t >/dev/null 2>&1 & rp=$!; wait_held
 eq "while running, the reservation is held"                   "$(held)" 1
 kill -TERM "$rp"; wait "$rp" 2>/dev/null; st=$?
 eq "SIGTERM: exit 143"                                        "$st" 143
 eq "…reservation released"                                    "$(held)" 0
 eq "…outcome class INTERRUPTED recorded"                      "$(jq -r 'select(.type == "outcome") | .class' .sdkit/work/_misc/routing.jsonl | tail -1)" INTERRUPTED
-python3 -c 'import os,signal,sys; signal.signal(signal.SIGINT, signal.SIG_DFL); os.execv(sys.argv[1], sys.argv[1:])' "$RR" developer --handoff h.md --rerun t >/dev/null 2>&1 & rp=$!; sleep 3; kill -INT "$rp"; wait "$rp" 2>/dev/null; st=$?
+python3 -c 'import os,signal,sys; signal.signal(signal.SIGINT, signal.SIG_DFL); os.execv(sys.argv[1], sys.argv[1:])' "$RR" developer --handoff h.md --rerun t >/dev/null 2>&1 & rp=$!; wait_held; kill -INT "$rp"; wait "$rp" 2>/dev/null; st=$?
 eq "SIGINT: exit 130, released"                               "$st:$(held)" "130:0"
 # a workflow requirement that refuses the run after the reservation (high-assurance profile, uncontracted handoff)
 mkdir -p .sdkit/.sdd; echo '{"task":"wf","phase":"implement","profile":"high-assurance"}' > .sdkit/.sdd/state.json; mkdir -p .sdkit/work/wf; echo '{"spawns":0}' > .sdkit/work/wf/state.json

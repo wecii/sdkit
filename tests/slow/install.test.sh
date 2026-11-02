@@ -51,7 +51,7 @@ printf 'check it\n' > "$d/h.md"
 mkdir -p "$d/openspec/changes/x"; printf '## Definition of Done\n- D1: works | Verified by: unit test\n' > "$d/openspec/changes/x/proposal.md"
 mkdir -p "$d/.sdkit/.sdd"; echo '{"task":"x","phase":"verify","proposal":"openspec/changes/x/proposal.md"}' > "$d/.sdkit/.sdd/state.json"
 out="$(cd "$d" && env -i HOME="$HOME" PATH="$T/fakebin:/usr/bin:/bin:$(dirname "$(command -v jq)")" .sdkit/scripts/run-role.sh verifier --handoff h.md --host claude --dry-run 2>&1)"
-eq "run-role --dry-run works from the installed scripts alone" "$(printf '%s' "$out" | grep -c 'claude')" 1
+eq "run-role --dry-run works from the installed scripts alone" "$(printf '%s' "$out" | grep -c '^(cd .* claude -p')" 1   # (with ROUTING=on a routing line names claude too)
 out="$(cd "$d" && env -i HOME="$HOME" PATH="$T/fakebin:/usr/bin:/bin:$(dirname "$(command -v jq)")" .sdkit/scripts/run-role.sh verifier --handoff h.md --host claude 2>&1)"; rc=$?
 eq "a verifier run with an open proposal reaches the host (dod-check is installed; not 'DoD not verifiable', not missing)" "$(printf '%s' "$out" | grep -c 'DoD not verifiable\|dod-check.sh is missing')" 0
 mv "$d/.sdkit/scripts/dod-check.sh" "$T/dc.bak"
