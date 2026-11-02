@@ -152,6 +152,10 @@ Nothing changes until you opt in. `ROUTING=off` stays the default, so `run-role.
 - **Exit codes of `run-role.sh` with `ROUTING=on`:** 7 = valid evidence already exists (nothing to run, do not retry), 8 = routing declined to run and there is no valid result (never a pass). Scripts that call `run-role.sh` must handle both.
 - **Turning it on:** set `RUN_ROLE_HOST` (and `VERIFIER_HOST` for independent roles), then `ROUTING=on`; look at a decision first with `route.sh explain --role <role>`. Details and limits: [design-routing.md](design-routing.md).
 
+## 1.3.4: test fixes only
+
+No manual step, no change to the scripts. The first full run (`tests/fast.sh --all`) found four test problems, none in the kit: `install.test.sh` counted `claude` lines and did not expect the routing line that `ROUTING=on` (the default since 1.3.2) prints, `recover.test.sh` gave `advance green` a different command than the one `red` was bound to, `reservation.test.sh` signalled `run-role.sh` after a fixed 3 s instead of waiting until it had reserved, and `report.test.sh` timed the machine under load. All four are fixed.
+
 ## 1.3.3: slow tests out of the everyday run, publishability scan
 
 No manual step. For people working on the kit: `tests/slow/` (the smoke tests `run.sh`, `sdd.test.sh`, `workflow.test.sh`, `reservation.test.sh`, `evidence`, `contract`, `route`, ...) no longer runs by default: `tests/fast.sh` and `scripts/test-select.sh run` leave it out and say how many suites they skipped; `--all` (or the T3 / milestone tier) runs them. `packaging/scan-publishable.sh --history` no longer reports the made-up keys of the redaction test as hard findings (they are listed in `packaging/scan-allow.txt`, with the reason). Projects that upgrade from 1.3.2 are not touched: the one-time move of `TELEMETRY` / `ROUTING` to their new defaults happens only when crossing 1.3.2.
