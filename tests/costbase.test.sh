@@ -4,7 +4,7 @@ set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"; CB="$ROOT/bench/costbase.sh"; T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 pass=0; failed=0
 eq() { if [ "$2" = "$3" ]; then pass=$((pass + 1)); echo "  ok   $1"; else failed=$((failed + 1)); echo "  FAIL $1 (got '$2', wanted '$3')"; fi; }
-"$CB" capture a --out "$T" >/dev/null 2>&1; "$CB" capture b --out "$T" >/dev/null 2>&1
+"$CB" capture a --out "$T" >/dev/null 2>&1 & "$CB" capture b --out "$T" >/dev/null 2>&1 & wait   # independent: both at once
 A="$T/a.costbase.json"; B="$T/b.costbase.json"
 eq "no model is called"                        "$(jq .model_calls "$A")" 0
 eq "cost per accepted task is NOT MEASURED"    "$(jq -r .cost_per_accepted_task "$A" | cut -c1-12)" "NOT MEASURED"

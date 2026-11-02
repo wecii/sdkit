@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # F20: cheap PR checks (T0 + selected T1) fail on a broken script or JSON, and the fixture regression history flags a regression without any model.
 set -u
-KIT="$(cd "$(dirname "$0")/.." && pwd)"; PC="$KIT/scripts/pr-check.sh"; HI="$KIT/bench/history.sh"; T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
+KIT="$(cd "$(dirname "$0")/.." && pwd)"; HI="$KIT/bench/history.sh"; T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
+# pr-check.sh runs build-adapters --check and audit.sh policy of the kit it lives in (about 10 s each call) when they exist next to it. This file tests the
+# plan, the syntax/JSON checks and the exit codes, not those two steps, so it runs a minimal copy without them (each step is guarded by [ -x ]).
+mkdir -p "$T/kit/scripts" && cp "$KIT/scripts/pr-check.sh" "$KIT/scripts/test-select.sh" "$KIT/scripts/env.sh" "$T/kit/scripts/"; PC="$T/kit/scripts/pr-check.sh"
 pass=0; failed=0
 eq() { if [ "$2" = "$3" ]; then pass=$((pass + 1)); echo "  ok   $1"; else failed=$((failed + 1)); echo "  FAIL $1 (got '$2', wanted '$3')"; fi; }
 R="$T/r"; mkdir -p "$R/tests" "$R/scripts"; cd "$R" && git init -q -b main . && git config user.email t@t && git config user.name t

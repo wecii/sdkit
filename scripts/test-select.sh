@@ -9,7 +9,7 @@
 #   Changed files: --files, else `git diff --name-only <base>` + untracked (base: --base, default HEAD). Nothing changed -> nothing to run.
 #   --tier T3 forces the full suite (milestones, risk boundaries); a mandatory high-risk test belongs in the map's `@always` line
 #   (`@always => <command>`), which runs in every tier except an empty change.
-#   run: executes the commands in order with `set -o pipefail` semantics (a failing command fails the run; no pipe hides it), prints
+#   run: executes the commands (up to --jobs N at a time, results always printed in map order) with `set -o pipefail` semantics (a failing command fails the run; no pipe hides it), prints
 #   `[T1] <cmd> ... ok|FAIL (Ns)` per command, the full output goes to a log file whose path is printed on failure, and a summary line
 #   `tests: tier=T1 commands=N ran=R cached=C failed=F skipped_suites=S elapsed=Ns`. A GREEN command is cached per exact tree + command
 #   (HEAD, diff, untracked content outside <project-dir>, the command, the map); failures are never cached; --no-cache ignores the cache.
@@ -17,8 +17,9 @@
 set -u
 mode="${1:-}"; shift 2>/dev/null || true
 map=""; base=HEAD; files=""; tier=""; nocache=0
-while [ $# -gt 0 ]; do case "$1" in --map) map="$2"; shift ;; --base) base="$2"; shift ;; --files) files="$2"; shift ;; --tier) tier="$2"; shift ;; --no-cache) nocache=1 ;; *) echo "test-select: unknown option $1" >&2; exit 2 ;; esac; shift; done
-case "$mode" in list|run) ;; *) echo "usage: test-select.sh list|run [--map F] [--base REF|--files \"a b\"] [--tier T1|T3] [--no-cache]" >&2; exit 2 ;; esac
+cores="$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)"; jobs="${TEST_SELECT_JOBS:-$(( cores / 3 < 1 ? 1 : cores / 3 ))}"   # commands run this many at a time (--jobs N, TEST_SELECT_JOBS; 1 = in order)
+while [ $# -gt 0 ]; do case "$1" in --map) map="$2"; shift ;; --base) base="$2"; shift ;; --files) files="$2"; shift ;; --tier) tier="$2"; shift ;; --no-cache) nocache=1 ;; --jobs) jobs="$2"; shift ;; *) echo "test-select: unknown option $1" >&2; exit 2 ;; esac; shift; done
+case "$mode" in list|run) ;; *) echo "usage: test-select.sh list|run [--map F] [--base REF|--files \"a b\"] [--tier T1|T3] [--no-cache] [--jobs N]" >&2; exit 2 ;; esac
 top="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"; cd "$top" || exit 2
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 KIT_DIR=.sdkit; [ -f "$here/env.sh" ] && { . "$here/env.sh" 2>/dev/null; SDKIT_ENV_QUIET=1 sdkit_env_load "$top" 2>/dev/null; }
@@ -31,13 +32,21 @@ if [ -z "$files" ]; then files="$( { git diff --name-only "$base" 2>/dev/null; g
 
 sel=""; why=""; full=0
 if [ "$tier" = T3 ]; then full=1; why="tier T3 requested"; fi
+# the map is read once, in bash: matching each changed file against each rule used to start four processes per pair (seconds per call)
+RE_SP='^bash( -[a-z]+ [a-z]+)* +([A-Za-z0-9_./-]+\.sh)( .*)?$'   # the script a map command runs (group 2)
+RES=(); RHSS=()
+while IFS= read -r line; do
+  case "$line" in ''|'#'*|'@'*) continue ;; esac
+  re="${line%%=>*}"; rhs="${line#*=>}"
+  re="${re%"${re##*[![:space:]]}"}"; rhs="${rhs#"${rhs%%[![:space:]]*}"}"; rhs="${rhs%"${rhs##*[![:space:]]}"}"
+  RES+=("$re"); RHSS+=("$rhs")
+done < "$map"
 while IFS= read -r f; do
   [ -n "$f" ] || continue
   hit=0
-  while IFS= read -r line; do
-    case "$line" in ''|'#'*|'@'*) continue ;; esac
-    re="${line%%=>*}"; rhs="${line#*=>}"; re="$(printf '%s' "$re" | sed -E 's/[[:space:]]+$//')"; rhs="$(printf '%s' "$rhs" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
-    if printf '%s\n' "$f" | grep -Eq "$re"; then
+  for ((ri = 0; ri < ${#RES[@]}; ri++)); do
+    re="${RES[$ri]}"; rhs="${RHSS[$ri]}"
+    if [[ "$f" =~ $re ]]; then
       hit=1
       case "$rhs" in
         ALL) full=1; why="${why:+$why; }$f matches shared rule" ;;
@@ -46,7 +55,7 @@ while IFS= read -r f; do
         *) sel="$sel$rhs"$'\n' ;;
       esac
     fi
-  done < "$map"
+  done
   [ "$hit" = 1 ] || { full=1; why="${why:+$why; }$f is not in the map (conservative: run all)"; }
 done <<< "$files"
 cmds=""
@@ -58,7 +67,7 @@ cmds="$(printf '%s\n' "$cmds" | sed 's/[[:space:]]*;;[[:space:]]*/\n/g' | sed -E
 gone=""; kept=""
 while IFS= read -r c; do
   [ -n "$c" ] || continue
-  sp="$(printf '%s\n' "$c" | sed -nE 's/^bash( -[a-z]+ [a-z]+)* +([A-Za-z0-9_.\/-]+\.sh)( .*)?$/\2/p')"
+  sp=""; [[ "$c" =~ $RE_SP ]] && sp="${BASH_REMATCH[2]}"
   if [ -n "$sp" ] && [ ! -f "$sp" ] && printf '%s\n' "$files" | grep -Fxq -- "$sp"; then gone="${gone}${gone:+, }$sp"; else kept="$kept$c"$'\n'; fi
 done <<< "$cmds"
 cmds="$(printf '%s' "$kept" | awk 'NF')"
@@ -81,16 +90,30 @@ tree_key() {  # exact tree + map + command
 }
 cache="$top/$KIT_DIR/.test-cache"; log="$(mktemp "${TMPDIR:-/tmp}/sdkit-tests.XXXXXX")"
 ran=0; cached=0; failed=0; ctime=0; cached_s=0; s0=$(date +%s)
+# Pass 1 (in order): a missing script fails, an identical tree already green is reused. Pass 2: what is left runs up to $jobs at a time (the wait is the
+# slowest suite, not the sum). Pass 3 (in order): results are printed and cached in the order of the map, whatever order they finished in.
+jd="$(mktemp -d "${TMPDIR:-/tmp}/sdkit-tests.d.XXXXXX")"; njobs=0
 while IFS= read -r c; do
   [ -n "$c" ] || continue
-  sp="$(printf '%s\n' "$c" | sed -nE 's/^bash( -[a-z]+ [a-z]+)* +([A-Za-z0-9_.\/-]+\.sh)( .*)?$/\2/p')"
+  sp=""; [[ "$c" =~ $RE_SP ]] && sp="${BASH_REMATCH[2]}"
   if [ -n "$sp" ] && [ ! -f "$sp" ]; then failed=$((failed + 1)); ran=$((ran + 1)); echo "[$t] $c ... FAIL: the map names $sp, which does not exist and was not deleted in this change (broken map or checkout)"; continue; fi
   k="$(tree_key "$c")"
   if [ "$nocache" = 0 ] && [ -f "$cache/$k" ]; then cached=$((cached + 1)); case "$(cat "$cache/$k" 2>/dev/null)" in ''|*[!0-9]*) ;; *) cached_s=$((cached_s + $(cat "$cache/$k"))) ;; esac; echo "[$t] $c ... ok (cached: identical tree already green)"; continue; fi
-  c0=$(date +%s); bash -o pipefail -c "$c" >> "$log" 2>&1; rc=$?; ran=$((ran + 1)); dt=$(( $(date +%s) - c0 ))
-  if [ "$rc" = 0 ]; then echo "[$t] $c ... ok (${dt}s)"; ctime=$((ctime + dt)); mkdir -p "$cache" && printf '%s\n' "$dt" > "$cache/$k"; ls -t "$cache" 2>/dev/null | tail -n +101 | while IFS= read -r o; do rm -f "$cache/$o"; done
-  else failed=$((failed + 1)); echo "[$t] $c ... FAIL rc=$rc (${dt}s); full output: $log"; tail -15 "$log" | sed 's/^/    /'; fi
+  njobs=$((njobs + 1)); printf '%s' "$c" > "$jd/$njobs.cmd"; printf '%s' "$k" > "$jd/$njobs.key"
 done <<< "$cmds"
+if [ "$njobs" -gt 0 ]; then
+  export JD="$jd"
+  seq 1 "$njobs" | xargs -P "$jobs" -I{} bash -c 'c0=$(date +%s); bash -o pipefail -c "$(cat "$JD/{}.cmd")" > "$JD/{}.out" 2>&1; echo $? > "$JD/{}.rc"; echo $(( $(date +%s) - c0 )) > "$JD/{}.dt"'
+  n=1
+  while [ "$n" -le "$njobs" ]; do
+    c="$(cat "$jd/$n.cmd")"; k="$(cat "$jd/$n.key")"; rc="$(cat "$jd/$n.rc" 2>/dev/null || echo 1)"; dt="$(cat "$jd/$n.dt" 2>/dev/null || echo 0)"
+    cat "$jd/$n.out" >> "$log" 2>/dev/null; ran=$((ran + 1))
+    if [ "$rc" = 0 ]; then echo "[$t] $c ... ok (${dt}s)"; ctime=$((ctime + dt)); mkdir -p "$cache" && printf '%s\n' "$dt" > "$cache/$k"; ls -t "$cache" 2>/dev/null | tail -n +101 | while IFS= read -r o; do rm -f "$cache/$o"; done
+    else failed=$((failed + 1)); echo "[$t] $c ... FAIL rc=$rc (${dt}s); full output: $log"; tail -15 "$jd/$n.out" | sed 's/^/    /'; fi
+    n=$((n + 1))
+  done
+fi
+rm -rf "$jd"
 echo "tests: tier=$t commands=$ncmd ran=$ran cached=$cached failed=$failed skipped_suites=$skipped elapsed=$(( $(date +%s) - s0 ))s${why:+ reason: $why}"
 # Value Report evidence (scripts/report.sh): what was selected, run, reused from the cache and left out. Counts and seconds only; never a path or a command.
 # cached_s = the recorded duration of the cached green runs (measured earlier); the time of skipped suites was never measured and is not recorded.
