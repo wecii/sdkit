@@ -40,7 +40,7 @@ for p in ~/code/projectA ~/code/projectB; do <kit>/bin/upgrade.sh "$p"; done
 - **Stack scripts:** `verify.sh` is now a thin entry point; the logic is in `steps.sh` (stack) and `scripts/verify-core.sh` (shared). All are managed files, `sync.sh` updates them. If you customized a copied `verify.sh`, `sync.sh` shows a CONFLICT: move the customization into a `verify.d/` policy or `VERIFY_CMD` and take the new file.
 - **Usage logging is off:** for the token ledger write `USAGE_LOG=1` in `project.env`; report with `scripts/usage.sh report`.
 - **New behaviour:** task state is kept in `work/<slug>/state.json` (resuming, single automatic retry); verifier output is validated with `parse-verdict.sh`; in parallel tasks the `writes:` scope is checked with `check-writes.sh`; `WORKTREE:` is added to the handoff. The read-only restriction on roles is now enforced on every host.
-- **Kit maintainers:** run `bin/build-adapters.sh --check` and `tests/run.sh`; not needed for projects.
+- **Kit maintainers:** run `bin/build-adapters.sh --check` and `tests/slow/run.sh`; not needed for projects.
 - **If you want to add a new host:** `<kit>/bin/init.sh --host <host> /path/to/project` (e.g. `opencode`, `cursor`, `gemini`); the project dir name does not change (the existing one is kept).
 
 ### 0.2.x → 0.3.0
@@ -151,6 +151,10 @@ Nothing changes until you opt in. `ROUTING=off` stays the default, so `run-role.
 - **Per repo:** `sdkit upgrade <repo>` appends the new `ROUTING` / `ROUTE_*` settings to `sdkit.env` (all optional, `ROUTING=off`) and the personal limits to `sdkit.local.env`. It never rewrites your values. Do it on a clean branch.
 - **Exit codes of `run-role.sh` with `ROUTING=on`:** 7 = valid evidence already exists (nothing to run, do not retry), 8 = routing declined to run and there is no valid result (never a pass). Scripts that call `run-role.sh` must handle both.
 - **Turning it on:** set `RUN_ROLE_HOST` (and `VERIFIER_HOST` for independent roles), then `ROUTING=on`; look at a decision first with `route.sh explain --role <role>`. Details and limits: [design-routing.md](design-routing.md).
+
+## 1.3.3: slow tests out of the everyday run, publishability scan
+
+No manual step. For people working on the kit: `tests/slow/` (the smoke tests `run.sh`, `sdd.test.sh`, `workflow.test.sh`, `reservation.test.sh`, `evidence`, `contract`, `route`, ...) no longer runs by default: `tests/fast.sh` and `scripts/test-select.sh run` leave it out and say how many suites they skipped; `--all` (or the T3 / milestone tier) runs them. `packaging/scan-publishable.sh --history` no longer reports the made-up keys of the redaction test as hard findings (they are listed in `packaging/scan-allow.txt`, with the reason). Projects that upgrade from 1.3.2 are not touched: the one-time move of `TELEMETRY` / `ROUTING` to their new defaults happens only when crossing 1.3.2.
 
 ## 1.3.2: measurement on by default, a price table, task-scoped token counts
 
