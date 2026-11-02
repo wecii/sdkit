@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # F14 hard cost policy of route.sh (opt-in ROUTE_COST_ENFORCE=hard): limits, unknown cost, reservations, reconciliation, mandatory roles. No model, no network.
 set -u
+[ -n "${PSEC_ONLY:-}" ] || exec "$(dirname "$0")/lib/psections.sh" "$0" "$@"   # the sections are independent: run them at the same time
 KIT="$(cd "$(dirname "$0")/.." && pwd)"; RT="$KIT/scripts/route.sh"; US="$KIT/scripts/usage.sh"
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 pass=0; failed=0

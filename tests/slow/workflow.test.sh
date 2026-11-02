@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # F03 tests: workflow profiles, the transition table, rejection reasons, the verification gates per profile, contract policy by profile and
-# boundary, interrupted agents, stale evidence, concurrent state changes, telemetry, and the legacy workflow. Run: tests/workflow.test.sh
+# boundary, interrupted agents, stale evidence, concurrent state changes, telemetry, and the legacy workflow. Run: tests/slow/workflow.test.sh
 set -u
-KIT="$(cd "$(dirname "$0")/.." && pwd)"
+[ -n "${PSEC_ONLY:-}" ] || exec "$(dirname "$0")/../lib/psections.sh" "$0" "$@"   # independent parts run at the same time, dependent sections as one chain
+KIT="$(cd "$(dirname "$0")/../.." && pwd)"
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 pass=0; fail=0
 ok()  { pass=$((pass + 1)); printf '  ok   %s\n' "$1"; }

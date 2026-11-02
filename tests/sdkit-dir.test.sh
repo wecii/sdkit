@@ -3,6 +3,7 @@
 # legacy (pre-1.0) repos still working, and sdkit upgrade --migrate.
 # Run: tests/sdkit-dir.test.sh
 set -u
+[ -n "${PSEC_ONLY:-}" ] || exec "$(dirname "$0")/lib/psections.sh" "$0" "$@"   # the sections are chained where marked, otherwise independent: run the chains at the same time
 KIT="$(cd "$(dirname "$0")/.." && pwd)"
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 export PATH="$(cd "$(dirname "$0")" && pwd)/stubs:$PATH" OPENSPEC_STUB_LOG="${TMPDIR:-/tmp}/openspec-stub.$$.log"

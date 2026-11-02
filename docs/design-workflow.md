@@ -108,7 +108,7 @@ Out of scope (F04): redesign of checkpoint/resume. Only the existing `state.sh`/
 
 A `workflow` section was added to the `telemetry.sh summary` output: profile, decisions, `rejections_by_reason`. `validate` rejects an unknown profile and reason. No sensitive data: the fields are fixed vocabulary words and ids.
 
-## 7. Tests (`tests/workflow.test.sh`)
+## 7. Tests (`tests/slow/workflow.test.sh`)
 
 135 cases, all passed: the transition table and every invalid target **from every phase** (state unchanged), every valid transition, reason codes, `start` validation; risk × profile interaction (small + medium/high refusal, risk floor, high-assurance low, high's design requirement); independent verification gates (no-verdict / BLOCK / stale / re-verification, attestation and `ci-check`); role × profile × `CONTRACTS` matrix, hook (ask/guided/off, scout, non-kit agent, valid/invalid handoff), `run-role.sh --dry-run` (exit 2 / warning / old behaviour); a valid contract not passing verification; interrupted agent (`agents-pending`, `close`, single retry, does not block in standard); concurrency (4 simultaneous `start`s → 1, 6 simultaneous `advance`s → 1 event, `_verdict` is not lost); telemetry; old state file (no profile) and partial install without `workflow.sh`.
 

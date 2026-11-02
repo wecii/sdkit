@@ -2,7 +2,8 @@
 # Budget safety (F14 stabilization): strict numbers, hard reservations, one price resolver, reservation lifecycle (run-role exits, signals, expiry,
 # recovery), project-wide concurrency, child-session accounting, usage reconciliation, DoD acceptance. Fake CLIs and fixtures only: no model, no network.
 set -u
-KIT="$(cd "$(dirname "$0")/.." && pwd)"; RT="$KIT/scripts/route.sh"; US="$KIT/scripts/usage.sh"; RR="$KIT/scripts/run-role.sh"
+[ -n "${PSEC_ONLY:-}" ] || exec "$(dirname "$0")/../lib/psections.sh" "$0" "$@"   # the sections are independent: run them at the same time
+KIT="$(cd "$(dirname "$0")/../.." && pwd)"; RT="$KIT/scripts/route.sh"; US="$KIT/scripts/usage.sh"; RR="$KIT/scripts/run-role.sh"
 T="$(mktemp -d)"; trap 'rm -rf "$T"; kill $(jobs -p) 2>/dev/null' EXIT
 pass=0; failed=0
 eq() { if [ "$2" = "$3" ]; then pass=$((pass + 1)); echo "  ok   $1"; else failed=$((failed + 1)); echo "  FAIL $1 (got '$2', wanted '$3')"; fi; }
@@ -59,15 +60,18 @@ eq "a provider mismatch is unpriced in usage.sh"              "$("$US" report --
 eq "…and counted unknown by route.sh (3)"                     "$(rc "$RT" decide --role developer --json)" 3
 
 echo "reservation lifecycle"
-use "$(newrepo l)"; cfg ROUTE_COST_ENFORCE=hard ROUTE_BUDGET_COST=1 ROUTE_RESERVE_USD=0.6 ROUTE_RESERVE_TTL_S=1
+use "$(newrepo l)"; cfg ROUTE_COST_ENFORCE=hard ROUTE_BUDGET_COST=1 ROUTE_RESERVE_USD=0.6 ROUTE_RESERVE_TTL_S=60
 out="$("$RT" decide --role developer --json --reserve --pid 999999 2>/dev/null)"; id="$(jq -r .decision_id <<< "$out")"
 RF=.sdkit/work/_misc/reservations.jsonl
+# age a reservation by rewriting its time instead of waiting for the TTL (a sleep made the test slow and, once decide took over a second, wrong)
+old() { jq -c --arg k "$1" 'if .type == "reserve" and ((.pid | tostring) == $k) then .ts = "2000-01-01T00:00:00Z" else . end' $RF > $RF.x && mv $RF.x $RF; }
 eq "the run reserves"                                         "$(jq -s '[.[] | select(.type == "reserve")] | length' $RF)" 1
 eq "a fresh reservation of a dead pid still counts (not yet old)" "$(rc "$RT" decide --role scout --json --reserve --pid $$)" 3
-sleep 2
+old 999999
 eq "past the TTL with its process gone it is stale"           "$("$RT" reservations --json | jq -r '.[0].state')" stale
 eq "…a stale reservation no longer blocks"                    "$(rc "$RT" decide --role scout --json --reserve --pid $$)" 0
-eq "an OLD reservation whose process is alive stays active (premature expiry protected)" "$(sleep 2; "$RT" reservations --json | jq -r --argjson p $$ '[.[] | select(.pid == $p) | .state] | first')" active
+old $$
+eq "an OLD reservation whose process is alive stays active (premature expiry protected)" "$("$RT" reservations --json | jq -r --argjson p $$ '[.[] | select(.pid == $p) | .state] | first')" active
 eq "recover scan lists only the stale one"                    "$("$KIT/scripts/recover.sh" scan --json 2>/dev/null | jq -r '[.[] | select(.kind == "reservation")] | length')" 1
 "$KIT/scripts/recover.sh" apply >/dev/null 2>&1
 eq "recover apply released it as EXPIRED"                     "$(jq -s '[.[] | select(.type == "release" and .class == "EXPIRED")] | length' $RF)" 1

@@ -4,6 +4,7 @@
 # one default stack (B4). Each section reproduces the failure the audit found.
 # Run: tests/hardening.test.sh
 set -u
+[ -n "${PSEC_ONLY:-}" ] || exec "$(dirname "$0")/lib/psections.sh" "$0" "$@"   # independent parts run at the same time, dependent sections as one chain
 KIT="$(cd "$(dirname "$0")/.." && pwd)"
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 pass=0; fail=0
