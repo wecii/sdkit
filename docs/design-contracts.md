@@ -9,7 +9,7 @@ This release makes no token or cost savings claim: the simulated benchmark measu
 Scope: a versioned handoff contract (call + result), a single script that validates it (`scripts/contract.sh`), hooking it into the supported boundaries (Claude Code hook, `run-role.sh`), a `contract.check` event in F01 telemetry, contract benchmark fixtures, tests.
 Out of scope (deliberately): changes to agent behaviour, model routing, risk policy or the phase machine; validation by an extra agent/LLM; a JSON schema library or an external service; hook claims for Cursor/Gemini/OpenCode/Codex that are not verified live.
 
-Acceptance criteria (DoD) and their evidence (`tests/contract.test.sh`, 197 cases, all pass; section 8):
+Acceptance criteria (DoD) and their evidence (`tests/slow/contract.test.sh`, 197 cases, all pass; section 8):
 
 | # | Criterion | Evidence section (test) |
 |---|---|---|
@@ -187,7 +187,7 @@ Reading notes: (a) in a contracted handoff some existing prose lines turn into s
 | T3 telemetry: `contract.check`, `failure/contract`, `contracts` summary | done |
 | T4 setting: `CONTRACTS` (`templates/sdkit.env`) | done |
 | T5 bench: 5 fixtures, `--contracts`, `overhead`, stub host (`fail/`, automatic marker) | done |
-| T6 `tests/contract.test.sh` (197 cases) | done |
+| T6 `tests/slow/contract.test.sh` (197 cases) | done |
 | T7 docs: this file, `references/contract.md`, `handoff.md`, `hosts.md`, `SKILL.md`, `guide.md`, `cheatsheet.md`, `README.md`, `CONTRIBUTING.md`, `upgrading.md`, `design-telemetry.md` | done |
 
 Checks run: `tests/run.sh` 109, `sdd` 52, `shared` 29, `memory` 38, `budget` 45, `sdkit-dir` 64, `risk-floor` 76, `hardening` 53, `telemetry` 118 (all with the same counts as before F02, none broken), **`contract` 197**; all pass. `bin/build-adapters.sh --check` is up to date (role files not touched). `bash -n` and `jq .` are clean; `shellcheck` is not installed on this machine and was not run.

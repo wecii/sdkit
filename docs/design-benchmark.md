@@ -14,7 +14,7 @@ bench/evaluator/<ID>-<slug>/ evaluator ONLY: hidden/ (hidden acceptance tests), 
 bench/strategies/*.json      baseline, sdkit-standard, sdkit-high-assurance
 bench/sim/sim.json           simulation fixture (hand-written numbers; labelled)
 bench/lib/                   runlimited.py (timeout, output limit, process group), ingest.jq, from-telemetry.jq, report.jq, report-md.jq, sim-agent.sh
-tests/tbench.test.sh         automated tests
+tests/slow/tbench.test.sh         automated tests
 ```
 
 Reused: the `telemetry.sh summary --json` format (imported with `from-telemetry.jq`), the same quality labels as `usage.sh`/`run-role.sh` (measured/estimated/unavailable), and the `bench/run.sh` rule "simulated by default, real with `--real` + `--yes`".

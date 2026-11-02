@@ -7,7 +7,7 @@ Status: **implemented**, on 1.1.0, on top of the F00/F00.5 changes. This documen
 Scope: a structured local event log per task, a report that reads it, event writing hooked into boundary points, a repeatable benchmark framework.
 Out of scope (on purpose): LiteLLM/proxy, external service or database, dashboard, changes to agent behaviour or model routing, changes to the phase machine.
 
-Acceptance criteria (DoD) and their evidence (`tests/telemetry.test.sh`, all passed; section 6):
+Acceptance criteria (DoD) and their evidence (`tests/slow/telemetry.test.sh`, all passed; section 6):
 
 | # | Criterion | Evidence section |
 |---|---|---|
@@ -139,7 +139,7 @@ Result file `{scenario, mode, host, deterministic, timing, summary}`. `determini
 | T2 boundary instrumentation: `sdd.sh`, `state.sh`, `run-role.sh`, `usage-log.sh`, `record-verdict.sh` | done |
 | T3 setting: `TELEMETRY` (`templates/sdkit.local.env`, personal; `split_personal_env` takes it from the template) | done |
 | T4 `bench/` (driver, 2 stub hosts, 4 scenarios, `compare`) | done |
-| T5 `tests/telemetry.test.sh` (118 cases) | done |
+| T5 `tests/slow/telemetry.test.sh` (118 cases) | done |
 | T6 docs: this file, `guide.md` (§2, §9, §10, §15, §18), `cheatsheet.md`, `README.md`, `CONTRIBUTING.md`, `upgrading.md` | done |
 | T7 fix so `sdkit_lock` does not wait on an unwritable directory | done |
 

@@ -574,7 +574,7 @@ releases for you without the phase checks: commit and push happen at step 7 (den
 **Usage and cost reconciliation.** Hooks (Claude Code `SubagentStop`/`Stop`) and `run-role.sh` write one line per execution to
 `work/<slug>/usage.jsonl`. A later line with the same execution id and model replaces an earlier one unless it would lose data (a snapshot never replaces
 a final line; counters only grow). `usage.sh scan` reads host transcripts for runs the hooks never saw, with the same ids, so nothing is counted twice.
-Cost is `tokens × pricing.json` (API-equivalent estimate, never a bill; the kit ships no prices).
+Cost is `tokens × pricing.json` (API-equivalent estimate, never a bill; `sdkit init` copies a starting table from the public Bedrock list, `sdkit doctor --update-pricing` refreshes it).
 
 **Task report.** When `sdd.sh advance done` succeeds (`completed`) or `sdd.sh abort` runs (`aborted`, or the word you pass), and `VALUE_REPORT=on`, `report.sh finalize` writes the report
 **once** (a second call finds it and does nothing; `--force` rewrites) and prints a compact version on stderr. Read it later with `sdkit report task <slug>`.

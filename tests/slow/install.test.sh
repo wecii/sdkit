@@ -2,7 +2,7 @@
 # Installed-distribution integrity: what init.sh puts into a project must contain every runtime script the installed scripts call, doctor must notice a
 # missing one, and the installed copy must run on its own (no source checkout, no plugin). Scratch repos, fake claude, no network.
 set -u
-KIT="$(cd "$(dirname "$0")/.." && pwd)"
+KIT="$(cd "$(dirname "$0")/../.." && pwd)"
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 pass=0; failed=0
 eq() { if [ "$2" = "$3" ]; then pass=$((pass + 1)); echo "  ok   $1"; else failed=$((failed + 1)); echo "  FAIL $1 (got '$2', wanted '$3')"; fi; }

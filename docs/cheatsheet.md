@@ -64,6 +64,7 @@ Task: `- [ ] T3 description | role: developer | size: medium | writes: path/ | a
 sdkit report task|session|latest|history [--detailed|--json|--markdown]   # Value Report: who did what, what it cost, what it saved (automatic at task/session end with VALUE_REPORT=on)
 <kit>/scripts/usage.sh report [slug] [--project] [--session ID|current] [--json]   # tokens, cache hit rate, estimated USD (API-equivalent) per role/model/session, coverage warnings (needs USAGE_LOG=1)
 <kit>/scripts/usage.sh scan [--session ID]       # ledger a Claude Code session the hook did not see, from its transcript (origin observed)
+<kit>/scripts/pricing.sh status                # price table: missing/stale/unpriced models/baseline (sdkit doctor --update-pricing refreshes it)
 <kit>/scripts/usage.sh prices                    # which price table is in force (pricing.json v2: model, provider, effective date)
 <kit>/scripts/usage.sh budget [slug]            # usage against TOKEN_BUDGET_TASK (exit 3 warning, 4 exceeded)
 <kit>/scripts/telemetry.sh summary [slug] [--json]  # run summary: phase/agent durations, tokens (measured/total), retries, failures, verification (needs TELEMETRY=1)

@@ -32,6 +32,8 @@ safe_slug() { case "$1" in ''|*[!A-Za-z0-9_.@-]*) return 1 ;; esac; return 0; }
 # One shared prelude: role table, totals, cost, routing counterfactual, avoided executions, savings. Task and session reports both use it.
 COMMON='
 def clean: if type == "string" then gsub("\\p{Cc}"; "") | .[0:120] else . end;
+# a sentence for people (warnings): control characters out, cut only at a word boundary and marked, never mid-word
+def cleanmsg: if type == "string" then gsub("\\p{Cc}"; "") | if length > 400 then (.[0:400] | sub(" [^ ]*$"; "")) + "…" else . end else . end;
 def n: (. // 0);
 def fresh: (.in // 0) + (.out // 0) + (.cache_write // 0);
 def tot: (.in // 0) + (.out // 0) + (.cache_read // 0) + (.cache_write // 0);
@@ -154,7 +156,8 @@ $T as $T | $RT as $rt | $CX as $cx | $SL as $sl | $HIST as $hist
           hosts: $hosts, primary_model: $pm, sessions: $sess,
           files_changed: $M.files_changed,
           tests: (if ($tests | length) == 0 then {state: "not recorded"} else {state: (if $tf > 0 then "failed" else "passed" end), passed: $tp, failed: $tf, red_expected: $tr} end),
-          quality_gates: (if $T == null then {state: "Not run", note: "telemetry off: no gate result recorded"}
+          quality_gates: (if $M.terminal | not then {state: "Pending", note: "task still open: the gate runs when it is verified"}
+                          elif $T == null then {state: "Not run", note: "telemetry off: no gate result recorded"}
                           elif $vf == null then {state: "Not run", note: "no verification result recorded"}
                           elif ($vf | tostring | ascii_downcase) == "pass" then {state: "Passed", final: $vf, rejections: ($T.failures.gate_rejections // 0)}
                           else {state: "Failed", final: $vf, rejections: ($T.failures.gate_rejections // 0)} end)},
@@ -180,7 +183,7 @@ $T as $T | $RT as $rt | $CX as $cx | $SL as $sl | $HIST as $hist
    validation: {tests: ($tests | map("\(.phase) \(.outcome) x\(.runs)")), verification: ($T.verification.results // [] | map(.outcome)), final: $vf,
                 retries: ($T.retries // null), failures: ($T.failures.by_category // null)},
    warnings: ([($U.warnings // [])[], (if $T == null then "telemetry off or empty: phases, durations, tests and gate results are unavailable" else empty end),
-               (if $M.base_missing then "REPORT_BASELINE_MODEL is not set: routing savings are N/A" else empty end)] | map(clean)),
+               (if $M.base_missing then "REPORT_BASELINE_MODEL is not set: routing savings are N/A" else empty end)] | map(cleanmsg)),
    summary: ("\($M.slug | clean) " + (if $M.terminal then "ended" else "is" end) + " \($status | ascii_upcase)" + (if $dur != null then " after \($dur | durfmt)" else "" end)
              + ": \($rows | nruns) role execution(s) across \($roles | map(.role) | unique | length) role(s)"
              + (if $vf != null then "; final verification \($vf)" else "" end)
@@ -214,7 +217,7 @@ $TASKS as $tasks
    evidence_reuse: ($avc.evidence_reuse // 0), skipped: (($avc.skipped_redundant // 0) + ($avc.skipped_budget // 0)),
    validation: {tests_passed: ($tasks | map(.tests_passed // 0) | add), tests_failed: ($tasks | map(.tests_failed // 0) | add), gates: ($tasks | map(.gates) | group_by(.) | map({key: .[0], value: length}) | from_entries)},
    optimizations_observed: ($tasks | map(.optimizations // []) | add // [] | unique),
-   warnings: ([($U.warnings // [])[], (if $M.state != "ended" then "this session has no end signal: figures cover what was recorded" else empty end)] | map(clean)),
+   warnings: ([($U.warnings // [])[], (if $M.state != "ended" then "this session has no end signal: figures cover what was recorded" else empty end)] | map(cleanmsg)),
    summary: ("session \($M.session | clean) (\($M.state)): \($tasks | length) task(s), \($rows | nruns) role execution(s)" + (if $M.state != "ended" then " [not a confirmed session end]" else "" end) + ".")}
 '
 
@@ -303,7 +306,7 @@ baseline_model() { printf '%s' "${REPORT_BASELINE_MODEL:-}" | tr -cd 'A-Za-z0-9.
 purposes() {  # {role: first sentence of its definition}; roles of the kit only, nothing invented for others. One awk, one jq.
   local d="$kit/core/roles"; [ -d "$d" ] || { echo '{}'; return; }
   awk 'FNR == 1 { n = FILENAME; sub(".*/", "", n); sub("\\.md$", "", n); done = 0 }
-       !done && /^description:/ { sub(/^description:[ \t]*/, ""); sub(/\. .*/, ""); sub(/\.$/, ""); if (n != "README") print n "\t" substr($0, 1, 60); done = 1 }' "$d"/*.md 2>/dev/null \
+       !done && /^description:/ { sub(/^description:[ \t]*/, ""); sub(/\. .*/, ""); sub(/\.$/, ""); if (length($0) > 110) { $0 = substr($0, 1, 110); sub(/ [^ ]*$/, "", $0); $0 = $0 "…" } if (n != "README") print n "\t" $0; done = 1 }' "$d"/*.md 2>/dev/null \
     | jq -Rn '[inputs | split("\t") | select(length == 2) | {key: .[0], value: .[1]}] | from_entries' 2>/dev/null || echo '{}'
 }
 history_json() {  # role statistics of earlier stored task reports (comparable-run baselines), other than <key>
@@ -339,7 +342,9 @@ build_task() {
   fi
   [ -n "$run" ] || run="${t0:-0}"; run="$(printf '%s' "$run" | tr -cd 'A-Za-z0-9_.-')"; [ -n "$run" ] || run=0
   key="$slug@$run"; bm="$(baseline_model)"
-  local U RT CX SL H P FC; U="$(usage_json "$slug" "")"; RT="$(slurp "$(src "$slug" routing)")"; CX="$(slurp "$(src "$slug" context)")"; SL="$(slurp "$(src "$slug" selection)")"
+  local U RT CX SL H P FC
+  "$here/usage.sh" reconcile --slug "$slug" >/dev/null 2>&1 || true   # subagent runs whose transcript was not yet written at SubagentStop
+  U="$(usage_json "$slug" "")"; RT="$(slurp "$(src "$slug" routing)")"; CX="$(slurp "$(src "$slug" context)")"; SL="$(slurp "$(src "$slug" selection)")"
   H="$(history_json "$key")"; P="$(purposes)"; FC="$(files_changed)"
   sess="$(jq -c '[(.rows // [])[] | .session | select(. != "")] | unique' <<< "$U")"
   jq -nc --argjson U "$U" --argjson T "$tj" --argjson RT "$RT" --argjson CX "$CX" --argjson SL "$SL" --argjson HIST "$H" \
@@ -369,6 +374,16 @@ show() {  # show <json> <mode> <detail>
   jq -r --arg mode "$2" --argjson detail "$3" "$FMT"'render($mode; $detail)' <<< "$1" 2>/dev/null
 }
 show_json() { jq . <<< "$1"; }
+# export_report <id> <json>: with REPORT_EXPORT=on, the end signal also leaves the report in <project-dir>/reports/<id>.{json,md} (committed with the project:
+# a readable copy of the stored report, no prompts or transcripts). <id> is the task id, or the session id for a session that served no task.
+export_report() {
+  [ "${REPORT_EXPORT:-}" = on ] || return 0
+  local d="$top/$KIT_DIR/reports" id="$1" j="$2"
+  safe_slug "$id" && mkdir -p "$d" 2>/dev/null || return 0
+  printf '%s\n' "$j" | jq . > "$d/$id.json.tmp.$$" 2>/dev/null && mv "$d/$id.json.tmp.$$" "$d/$id.json" || { rm -f "$d/$id.json.tmp.$$"; return 0; }
+  show "$j" markdown true > "$d/$id.md.tmp.$$" 2>/dev/null && mv "$d/$id.md.tmp.$$" "$d/$id.md" || rm -f "$d/$id.md.tmp.$$"
+  return 0
+}
 
 # ---------------------------------------------------------------- commands
 mode=text; detail=false; slug=""; run=""; sid=""; status=""; force=0; quiet=0; reason=""; sub=""
@@ -433,8 +448,9 @@ case "$cmd" in
     [ -n "$slug" ] || slug="$(sdkit_active_slug "$top")"; [ -n "$slug" ] && safe_slug "$slug" || exit 0
     j="$(build_task "$slug" "$status" true "terminal state reported by the workflow ($status)")" || exit 0; [ -n "$j" ] || exit 0
     k="$(jq -r .key <<< "$j")"
-    if [ -f "$rdir/task/$k.json" ] && [ "$force" = 0 ]; then [ "$quiet" = 1 ] || echo "SDKit Value Report for $k already exists: sdkit report task $slug" >&2; exit 0; fi
+    if [ -f "$rdir/task/$k.json" ] && [ "$force" = 0 ]; then export_report "$slug" "$(cat "$rdir/task/$k.json")"; [ "$quiet" = 1 ] || echo "SDKit Value Report for $k already exists: sdkit report task $slug" >&2; exit 0; fi
     store task "$k" "$j" || exit 0
+    export_report "$slug" "$j"
     [ "$quiet" = 1 ] || { show "$j" text false >&2; } ;;
   session-end)
     parse "$@"; [ "${VALUE_REPORT:-}" = on ] || [ "$force" = 1 ] || exit 0
@@ -445,7 +461,7 @@ case "$cmd" in
     U="$(usage_json "" "$sid")"; [ "$(jq -r '.empty // false' <<< "$U")" = true ] && exit 0
     TK="$( [ -f "$rdir/index.jsonl" ] && jq -sc --arg s "$sid" 'map(select(.kind == "task" and ((.sessions // []) | index($s)) != null))' "$rdir/index.jsonl" || echo '[]')"
     j="$(jq -nc --argjson U "$U" --argjson TASKS "$TK" --argjson M "$(jq -nc --arg s "$sid" --arg r "$reason" --arg now "$(now)" --arg bm "$(baseline_model)" '{session:$s, key:("session:" + $s), state:"ended", reason:$r, ended_at:$now, now:$now, baseline_model:$bm}')" "def _x: .; $COMMON $BUILD_SESSION")" || exit 0
-    [ -n "$j" ] && store session "$sid" "$j" && { [ "$quiet" = 1 ] || show "$j" text false >&2; } ;;
+    [ -n "$j" ] && store session "$sid" "$j" && { [ "$TK" != "[]" ] || export_report "$sid" "$j"; [ "$quiet" = 1 ] || show "$j" text false >&2; } ;;
   recover)
     parse "$@"; [ "${VALUE_REPORT:-}" = on ] || [ "$force" = 1 ] || exit 0
     # sessions that left records but never got an end signal and have no stored summary; the newest one may still be running, so it is left alone
@@ -460,7 +476,7 @@ case "$cmd" in
       U="$(usage_json "" "$s")"; [ "$(jq -r '.empty // false' <<< "$U")" = true ] && continue
       TK="$( [ -f "$rdir/index.jsonl" ] && jq -sc --arg s "$s" 'map(select(.kind == "task" and ((.sessions // []) | index($s)) != null))' "$rdir/index.jsonl" || echo '[]')"
       j="$(jq -nc --argjson U "$U" --argjson TASKS "$TK" --argjson M "$(jq -nc --arg s "$s" --arg now "$(now)" --arg bm "$(baseline_model)" '{session:$s, key:("session:" + $s), state:"interrupted", reason:"no end signal", ended_at:null, now:$now, baseline_model:$bm}')" "def _x: .; $COMMON $BUILD_SESSION")" || continue
-      [ -n "$j" ] && store session "$s" "$j" && n=$((n + 1))
+      [ -n "$j" ] && store session "$s" "$j" && { [ "$TK" != "[]" ] || export_report "$s" "$j"; n=$((n + 1)); }
     done
     [ "$n" -gt 0 ] && [ "$quiet" = 0 ] && echo "SDKit: $n earlier session(s) ended without a signal; their summaries were recovered (interrupted): sdkit report history" >&2
     exit 0 ;;

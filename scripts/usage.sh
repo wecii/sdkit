@@ -26,13 +26,16 @@
 #   usage.sh scan [--session ID | --since YYYY-MM-DD] [--dir DIR] [--slug S]
 #                               Claude Code only: read the session transcript(s) and their subagent transcripts and log them as origin "observed"
 #                               (same ids as the hooks, so nothing is counted twice). Default: the most recent session.
-#   usage.sh extract <transcript>   one JSON object with the token totals of a transcript (the hooks use this; one parser, one rule)
+#   usage.sh extract <transcript> [--since TS]   one JSON object with the token totals of a transcript (the hooks use this; one parser, one rule);
+#                               --since counts only requests from TS on (a session serving several tasks is charged to each task from its start)
+#   usage.sh reconcile [--slug S]   fill in subagent runs logged as unmeasured (transcript not yet written at SubagentStop) from the transcripts now on disk
+#   usage.sh window             start of the open task (ISO UTC) or nothing: the --since value the hooks pass for the orchestrator
 #   usage.sh budget [slug]      used vs TOKEN_BUDGET_TASK (in + out + cache-write; cache reads are cheap and left out).
 #                               Exit 0 under TOKEN_BUDGET_WARN_PCT (default 70), 3 from there, 4 at 100%. Silent exit 0 when no budget or no data.
 # Slug default: the task the phase machine has open (sdd.sh task), else the most recently updated work/<slug>/state.json, else "_misc".
 set -u
 command -v jq >/dev/null || { echo "usage.sh needs jq" >&2; exit 1; }
-top="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+top="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"   # the hooks set it: no git process per call
 . "$(dirname "${BASH_SOURCE[0]}")/env.sh" || { echo "sdkit: env.sh is missing next to $(basename "$0"): run sdkit upgrade" >&2; exit 1; }; sdkit_env_load "$top"
 work="$top/$KIT_DIR/work"
 
@@ -41,7 +44,9 @@ current_slug() {  # the open SDD task, else the most recently updated work/*/sta
   echo "${s:-_misc}"
 }
 
-# extract_json <transcript>: totals of one Claude Code transcript, as one JSON object.
+# extract_json <transcript> [since]: totals of one Claude Code transcript, as one JSON object. With <since> (ISO UTC, e.g. the start of the open task)
+# only requests made at or after it count: one session often serves several tasks and its transcript is cumulative, so without a window every task
+# would be charged for the whole session. A request without a timestamp is kept (it cannot be placed).
 #  - a streamed assistant message appears several times with a growing output_tokens: each field is the MAX over the repeats, never the first
 #  - records are keyed by requestId (one API request = one usage, however many records carry it), else message id
 #  - a record without either is keyed by its uuid (else its position), so unrelated messages are never merged into one
@@ -49,11 +54,13 @@ current_slug() {  # the open SDD task, else the most recently updated work/*/sta
 #  - usage is split by model: a session that switches model is priced per model, not at the last one's rate
 #  - input_tokens is already WITHOUT cache; cache_read_input_tokens and cache_creation_input_tokens are separate
 extract_json() {
-  jq -cs '
+  jq -cs --arg since "${2:-}" '
     def n: (. // 0);
+    def norm_ts: if type == "string" then sub("\\.[0-9]+"; "") else . end;
     ( [ to_entries[] | .key as $i | .value | select(type == "object" and .type == "assistant" and ((.message.usage // null) | type) == "object")
         | {k: ((.requestId // .message.id // .uuid) // "line\($i)"), model: (.message.model // ""), u: .message.usage, ts: (.timestamp // null)} ]
       | map(select(.model != "<synthetic>"))
+      | map(select($since == "" or .ts == null or (.ts | norm_ts) >= $since))
       | group_by(.k)
       | map({model: (map(.model | select(. != "")) | last // ""),
              in: (map(.u.input_tokens | n) | max), out: (map(.u.output_tokens | n) | max),
@@ -71,7 +78,8 @@ extract_json() {
 # log_line <json line> <file>: add one ledger line under the lock, replacing the same (id, model) only when that loses nothing
 log_line() {
   local line="$1" file="$2" id mdl ntq ex exj
-  id="$(jq -r '.id' <<< "$line")"; mdl="$(jq -r '.model // ""' <<< "$line")"; ntq="$(jq -r '.tq // "actual"' <<< "$line")"
+  # one jq for the three fields (a separator that is not whitespace, so an empty model survives `read`)
+  IFS=$'\x1f' read -r id mdl ntq <<< "$(jq -r '[(.id // ""), (.model // ""), (.tq // "actual")] | join("\u001f")' <<< "$line")"
   sdkit_lock "$file"
   if [ -n "$id" ] && [ -f "$file" ]; then
     exj="$(jq -Rc --arg id "$id" --arg m "$mdl" '(try fromjson catch null) | select(type == "object" and .id == $id and (.model // "") == $m)' "$file" | tail -1)"
@@ -80,7 +88,7 @@ log_line() {
       #  - a snapshot never replaces a final line or a larger reading, and an unmeasured mark never replaces a measurement
       #  - a FINAL line with smaller counters is still the end of the run: it is promoted, keeping the larger counter of each kind (the report and the budget then agree)
       ex="$(jq -r '"\(.kind // "snapshot") \((.in // 0) + (.out // 0) + (.cache_read // 0) + (.cache_write // 0))"' <<< "$exj")"; set -- $ex
-      local nk nt; nk="$(jq -r '.kind' <<< "$line")"; nt="$(jq -r '.in + .out + .cache_read + .cache_write' <<< "$line")"
+      local nk nt; IFS=' ' read -r nk nt <<< "$(jq -r '"\(.kind) \(.in + .out + .cache_read + .cache_write)"' <<< "$line")"
       if [ "$ntq" = unavailable ] || { [ "$nk" != final ] && { [ "$1" = final ] || [ "$nt" -lt "$2" ]; }; }; then sdkit_unlock "$file"; return 0; fi
       # counters only grow: whatever replaces the earlier reading keeps the larger value of each counter (a final may read lower on one kind than a snapshot did)
       line="$(jq -nc --argjson n "$line" --argjson e "$exj" '$n + {in: ([$n.in, ($e.in // 0)] | max), out: ([$n.out, ($e.out // 0)] | max), cache_read: ([$n.cache_read, ($e.cache_read // 0)] | max), cache_write: ([$n.cache_write, ($e.cache_write // 0)] | max)}')"
@@ -233,9 +241,31 @@ case "$cmd" in
        + (if ($cest | test("^[0-9]+([.][0-9]+)?$")) then {cost_est_usd:($cest | tonumber), cost_src:"host-estimate"} else {} end)')" || { echo "usage.sh: bad number in an argument" >&2; exit 2; }
     # agents finish at the same time: the replace-then-append runs under a lock, or lines of parallel agents are lost
     log_line "$line" "$file" ;;
+  window)   # the start of the open task (ISO UTC), or nothing: where its share of a cumulative session transcript begins
+    slug="$(current_slug)"; sf="$top/$KIT_DIR/.sdd/state.json"
+    [ -f "$sf" ] && jq -r --arg s "$slug" 'select(.task == $s) | .startedAt // empty' "$sf" 2>/dev/null | head -1 ;;
+  reconcile)   # subagent runs the hook could not read (transcript not written yet): fill them in from the transcript now on disk. Prints how many.
+    slug=""; dir="${CLAUDE_TRANSCRIPT_DIR:-}"
+    while [ $# -gt 0 ]; do case "$1" in --slug) slug="$2"; shift ;; --dir) dir="$2"; shift ;; *) echo "unknown option $1" >&2; exit 2 ;; esac; shift; done
+    [ -n "$dir" ] || dir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/$(printf '%s' "$top" | sed 's/[^A-Za-z0-9]/-/g')"
+    [ -n "$slug" ] || slug="$(current_slug)"; file="$work/$slug/usage.jsonl"
+    n=0; [ -d "$dir" ] && [ -f "$file" ] || { echo 0; exit 0; }
+    while IFS="$(printf '\t')" read -r aid sid; do
+      a="$dir/$sid/subagents/agent-$aid.jsonl"; [ -f "$a" ] || continue
+      aj="$(extract_json "$a")"; [ -n "$aj" ] && [ "$(jq .messages <<< "$aj")" -gt 0 ] || continue
+      meta="${a%.jsonl}.meta.json"; role="$(jq -r '.agentType // empty' "$meta" 2>/dev/null)"; role="${role##*:}"; [ -n "$role" ] || role=subagent
+      prov="$(jq -r .provider <<< "$aj")"
+      while IFS= read -r m; do
+        [ -n "$m" ] || continue
+        log_line "$(jq -nc --argjson m "$m" --argjson j "$aj" --arg id "$aid" --arg role "$role" --arg s "$sid" --arg p "$prov" --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+          '{v:2, ts:($j.last_ts // $ts | sub("\\.[0-9]+"; "")), role:$role, tier:"", host:"claude", model:$m.model, provider:$p, session:$s, id:$id, origin:"observed", kind:"final", source:"reconcile", in:$m.in, out:$m.out, cache_read:$m.cache_read, cache_write:$m.cache_write}')" "$file"
+        n=$((n + 1))
+      done < <(jq -c '(.by_model | if length == 0 then [{model:"",in:0,out:0,cache_read:0,cache_write:0}] else . end)[]' <<< "$aj")
+    done < <(jq -r 'select(.tq == "unavailable" and (.id // "") != "" and (.session // "") != "" and (.id | startswith("rr-") | not)) | [.id, .session] | @tsv' "$file" 2>/dev/null | sort -u)
+    echo "$n" ;;
   extract)
-    [ -f "${1:-}" ] || { echo "usage.sh extract <transcript>" >&2; exit 2; }
-    extract_json "$1" | { read -r j && [ -n "$j" ] && printf '%s\n' "$j" || exit 1; } ;;
+    [ -f "${1:-}" ] || { echo "usage.sh extract <transcript> [--since TS]" >&2; exit 2; }
+    extract_json "$1" "$([ "${2:-}" = --since ] && printf '%s' "${3:-}")" | { read -r j && [ -n "$j" ] && printf '%s\n' "$j" || exit 1; } ;;
   prices)
     pf="${TELEMETRY_PRICES:-$top/$KIT_DIR/pricing.json}"; json=0; [ "${1:-}" = --json ] && json=1
     if [ ! -f "$pf" ]; then
@@ -258,7 +288,8 @@ case "$cmd" in
     if [ -n "$sid" ]; then list="$dir/$sid.jsonl"
     elif [ -n "$since" ]; then list="$(find "$dir" -maxdepth 1 -name '*.jsonl' -newermt "$since" 2>/dev/null | sort)"
     else list="$(ls -t "$dir"/*.jsonl 2>/dev/null | head -1)"; fi
-    n=0
+    n=0; win=""
+    [ -f "$top/$KIT_DIR/.sdd/state.json" ] && win="$(jq -r --arg s "$slug" 'select(.task == $s) | .startedAt // empty' "$top/$KIT_DIR/.sdd/state.json" 2>/dev/null | head -1)"
     # one ledger line per (execution, model); ids are the hooks' ids, so a run the hook already recorded is not counted again
     emit_obs() {  # $1 = extract json, $2 = id, $3 = role, $4 = session, $5 = kind, $6 = provider
       local j="$1" m
@@ -271,7 +302,7 @@ case "$cmd" in
     }
     for f in $list; do
       [ -f "$f" ] || { echo "scan: no transcript $f" >&2; continue; }
-      s="$(basename "$f" .jsonl)"; j="$(extract_json "$f")"; [ -n "$j" ] || continue
+      s="$(basename "$f" .jsonl)"; j="$(extract_json "$f" "$win")"; [ -n "$j" ] || continue
       [ "$(jq .messages <<< "$j")" -gt 0 ] && emit_obs "$j" "session-$s" orchestrator "$s" snapshot "$(jq -r .provider <<< "$j")"
       for a in "$dir/$s"/subagents/agent-*.jsonl; do
         [ -f "$a" ] || continue
@@ -279,6 +310,8 @@ case "$cmd" in
         role="$(jq -r '.agentType // empty' "$meta" 2>/dev/null)"; role="${role##*:}"; [ -n "$role" ] || role=subagent
         fin="$(jq -r 'if .finished == true then "final" else "snapshot" end' "$meta" 2>/dev/null)"; [ -n "$fin" ] || fin=snapshot
         aj="$(extract_json "$a")"; [ -n "$aj" ] || continue
+        # a subagent of an earlier task of the same session belongs to that task's ledger, not to this one
+        [ -z "$win" ] || [ "$(jq -r --arg w "$win" '(.last_ts // "" | sub("\\.[0-9]+"; "")) >= $w' <<< "$aj")" = true ] || continue
         [ "$(jq .messages <<< "$aj")" -gt 0 ] && emit_obs "$aj" "$aid" "$role" "$s" "$fin" "$(jq -r .provider <<< "$aj")"
       done
     done

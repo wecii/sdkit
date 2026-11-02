@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Check that a repo's kit setup is complete. Prints what to fix. Exit 0 = no failures (warnings allowed).
-# Usage: doctor.sh [target-dir]
+# Usage: doctor.sh [--update-pricing] [target-dir]
+#   --update-pricing  rebuild <project-dir>/pricing.json from the public AWS Bedrock price list (only a table the kit wrote; yours is left alone)
 set -u
 . "$(dirname "$0")/lib.sh"
+UPDATE_PRICING=0; [ "${1:-}" = --update-pricing ] && { UPDATE_PRICING=1; shift; }
 TARGET="$(cd "${1:-$PWD}" && pwd)"
 FAILS=0; WARNS=0
 ok()   { say "  ok    $*"; }
@@ -70,6 +72,26 @@ else
   bad "no sdkit.env in .sdkit/ (or project.env in a legacy .agentkit/, .claude/, .codex/): run sdkit init"
 fi
 
+# measurement: the Value Report is only as good as what is recorded
+if [ -f "$env_file" ]; then
+  miss=""
+  [ "${USAGE_LOG:-}" = 1 ] || miss="$miss USAGE_LOG=1"; [ "${TELEMETRY:-}" = 1 ] || miss="$miss TELEMETRY=1"
+  [ "${VALUE_REPORT:-}" = on ] || miss="$miss VALUE_REPORT=on"; [ "${ROUTING:-}" = on ] || miss="$miss ROUTING=on"
+  [ -z "$miss" ] && ok "measurement on (USAGE_LOG, TELEMETRY, VALUE_REPORT, ROUTING)" \
+    || warn "measurement off, so the Value Report has gaps (tokens, phases, routing):$miss (USAGE_LOG, TELEMETRY, VALUE_REPORT in sdkit.local.env; ROUTING in sdkit.env)"
+  # price table and routing baseline
+  pscript="$TARGET/$KIT_DIR/scripts/pricing.sh"; [ -x "$pscript" ] || pscript="$SCAFFOLD_ROOT/scripts/pricing.sh"
+  if [ "$UPDATE_PRICING" = 1 ]; then
+    if [ -x "$pscript" ]; then pout="$(CLAUDE_PROJECT_DIR="$TARGET" "$pscript" refresh 2>&1)" && ok "$pout" || warn "pricing not updated: $pout"
+    else warn "pricing.sh not found: run sdkit upgrade"; fi
+  fi
+  if [ -x "$pscript" ]; then
+    pout="$(CLAUDE_PROJECT_DIR="$TARGET" "$pscript" status 2>&1)" && ok "$(printf '%s' "$pout" | head -1)" \
+      || { warn "$(printf '%s' "$pout" | head -1)"; printf '%s\n' "$pout" | tail -n +2 | sed 's/^  - /        /'
+           say "        fix: set REPORT_BASELINE_MODEL=<model id from pricing.json> in sdkit.env; refresh the table with: sdkit doctor --update-pricing"; }
+  fi
+fi
+
 project_md="$TARGET/$KIT_DIR/project.md"
 if [ -f "$project_md" ]; then
   grep -q 'TODO' "$project_md" && bad "project.md still has TODO placeholders" || ok "project.md filled in"
@@ -112,7 +134,7 @@ has_codex=0; has_opencode=0; has_cursor=0; has_gemini=0
 if [ -f "$TARGET/AGENTS.md" ] || [ -d "$TARGET/.agents/skills" ]; then
   [ -f "$TARGET/AGENTS.md" ] && ok "AGENTS.md present" || bad "AGENTS.md missing"
   [ -f "$TARGET/.agents/skills/spec-driven-dev/SKILL.md" ] && ok "skills installed in .agents/skills" || bad ".agents/skills/spec-driven-dev missing (run init.sh --host <host>)"
-  for s in verify verify-core env guard plan-waves worktree resolve-base state parse-verdict check-plan-parity check-writes usage memory lookup-cache run-role route workflow contract telemetry dod-check audit redact digest adapter dispatch knowledge recover test-select pr-check; do
+  for s in verify verify-core env guard plan-waves worktree resolve-base state parse-verdict check-plan-parity check-writes usage memory lookup-cache run-role route workflow contract telemetry dod-check audit redact digest adapter dispatch knowledge recover test-select pr-check pricing; do
     [ -x "$TARGET/$KIT_DIR/scripts/$s.sh" ] || bad "$KIT_DIR/scripts/$s.sh missing or not executable (run upgrade.sh)"
   done
   [ -x "$TARGET/$KIT_DIR/hooks/adapt.sh" ] && ok "hooks copied for the non-Claude hosts" || bad "$KIT_DIR/hooks missing (run upgrade.sh)"

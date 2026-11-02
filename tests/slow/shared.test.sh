@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # The developer's own content in shared files must survive init, re-init and sync byte for byte.
-# Run: tests/shared.test.sh
+# Run: tests/slow/shared.test.sh
 set -u
-KIT="$(cd "$(dirname "$0")/.." && pwd)"
+KIT="$(cd "$(dirname "$0")/../.." && pwd)"
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
-export PATH="$(cd "$(dirname "$0")" && pwd)/stubs:$PATH" OPENSPEC_STUB_LOG="${TMPDIR:-/tmp}/openspec-stub.$$.log"   # init must not need the real openspec
+export PATH="$(cd "$(dirname "$0")/.." && pwd)/stubs:$PATH" OPENSPEC_STUB_LOG="${TMPDIR:-/tmp}/openspec-stub.$$.log"   # init must not need the real openspec
 pass=0; fail=0
 ok()  { pass=$((pass + 1)); printf '  ok   %s\n' "$1"; }
 bad() { fail=$((fail + 1)); printf '  FAIL %s\n' "$1"; }

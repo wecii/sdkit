@@ -125,9 +125,9 @@ sdkit_active_slug() {
 # stuck and broken. Breaking is deliberately slow: breaking early could remove a lock a new owner has just taken. Always returns 0: a hook
 # must not hang or fail on its own lock.
 sdkit_lock() {
-  local l="$1.lock" i=0 pid
-  mkdir -p "$(dirname "$1")" 2>/dev/null
-  [ -w "$(dirname "$1")" ] || return 0   # a directory nobody can write to can never be locked: do not wait for it
+  local l="$1.lock" i=0 pid d=.; case "$1" in */*) d="${1%/*}" ;; esac   # no dirname/mkdir processes when the directory is there (every ledger and event write locks)
+  [ -d "$d" ] || mkdir -p "$d" 2>/dev/null
+  [ -w "$d" ] || return 0   # a directory nobody can write to can never be locked: do not wait for it
   while ! mkdir "$l" 2>/dev/null; do
     i=$((i + 1))
     if [ "$i" -ge 60 ]; then

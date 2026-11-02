@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # F02 tests: agent contracts (scripts/contract.sh), the Claude Code hook, run-role.sh integration, telemetry, the independence of the verifier and
-# the phase gates, backward compatibility, and the contract benchmarks (simulated; nothing here starts a live host CLI). Run: tests/contract.test.sh
+# the phase gates, backward compatibility, and the contract benchmarks (simulated; nothing here starts a live host CLI). Run: tests/slow/contract.test.sh
 set -u
-KIT="$(cd "$(dirname "$0")/.." && pwd)"
+KIT="$(cd "$(dirname "$0")/../.." && pwd)"
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 pass=0; fail=0
 ok()  { pass=$((pass + 1)); printf '  ok   %s\n' "$1"; }
@@ -328,26 +328,6 @@ eq "the shared template ships CONTRACTS empty (off)"   "$(sed -n 's/^CONTRACTS=/
 eq "a handoff in the old format is not a contract"     "$(printf 'ROLE: verifier\nTASK: x\n' | "$C" issue - --check-only | sed -n 's/.*reason=\([a-z-]*\):.*/\1/p')" missing-field
 eq "an old handoff goes through run-role unchanged"    "$("$RR" developer --handoff "$G/legacy.md" --host claude --dry-run 2>&1 | grep -c CONTRACT)" 0
 eq "...with no registry entry"                         "$(ls .sdkit/work/t1/contracts | grep -c legacy)" 0
-
-echo "contract benchmarks (simulated)"
-BN="$KIT/bench/run.sh"
-eq "a real contracted run is refused (not decided yet)" "$("$BN" run low-single-file --real --contracts --host claude --yes >/dev/null 2>&1; echo $?)" 2
-eq "five contract fixtures"                            "$("$BN" list contracts | wc -l | tr -d ' ')" 5
-eq "the F01 list is unchanged"                         "$("$BN" list | wc -l | tr -d ' ')" 4
-"$BN" run contracts --out "$T/bc1" >/dev/null 2>&1; "$BN" run contracts --out "$T/bc2" >/dev/null 2>&1
-for s in contract-valid-single contract-invalid-handoff contract-multi-chain contract-interrupted contract-verifier-evidence; do
-  eq "$s: reproducible"                                "$(jq -S -c .deterministic "$T/bc1/$s.simulated.json" 2>/dev/null | shasum | cut -c1-12)" "$(jq -S -c .deterministic "$T/bc2/$s.simulated.json" 2>/dev/null | shasum | cut -c1-12)"
-  eq "$s: reaches done"                                "$(jq -r .summary.status "$T/bc1/$s.simulated.json" 2>/dev/null)" completed
-done
-eq "valid single: one handoff, one result, no failure" "$(jq -r '"\(.summary.contracts.handoffs) \(.summary.contracts.results) \(.summary.contracts.invalid)"' "$T/bc1/contract-valid-single.simulated.json")" "1 1 0"
-eq "invalid handoff: detected, retried once, recovered" "$(jq -r '"\(.summary.contracts.by_reason | keys | join(",")) retries=\(.summary.retries)"' "$T/bc1/contract-invalid-handoff.simulated.json")" "malformed,missing-field retries=1"
-eq "multi-agent chain: every agent contracted"         "$(jq -r '"\(.summary.contracts.handoffs) \(.summary.contracts.results)"' "$T/bc1/contract-multi-chain.simulated.json")" "7 7"
-eq "interrupted: the failure is a host-error and a no-result" "$(jq -r '"\(.summary.failures.by_category["host-error"]) \(.summary.contracts.by_reason["no-result"])"' "$T/bc1/contract-interrupted.simulated.json")" "1 1"
-eq "verifier fixture: verdict recorded separately"     "$(jq -r '.summary.verification.final' "$T/bc1/contract-verifier-evidence.simulated.json")" PASS
-for s in low-single-file medium-multi-file high-independent-verify multi-agent-handoff; do
-  "$BN" run "$s" --out "$T/f1" >/dev/null 2>&1
-  eq "F01 $s: no contract event without a contract"    "$(jq -r '.summary.contracts.checked' "$T/f1/$s.simulated.json")" 0
-done
 
 echo "contracts: $pass passed, $fail failed"
 [ "$fail" = 0 ]

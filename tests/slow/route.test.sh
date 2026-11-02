@@ -2,9 +2,9 @@
 # F06 tests: deterministic orchestration (scripts/route.sh) and its consumer run-role.sh. No model, no network, no paid call: the only "provider" is a fake CLI.
 # Covers: registry and configuration, routing by risk/role/capability, overrides, scheduling (mandatory, optional, reuse, stale, duplicates, concurrency),
 # retry and escalation by failure class, budgets (hard vs advisory, unavailable usage, cost), telemetry, compatibility with routing off, and an untouched source tree.
-# Run: tests/route.test.sh
+# Run: tests/slow/route.test.sh
 set -u
-KIT="$(cd "$(dirname "$0")/.." && pwd)"
+KIT="$(cd "$(dirname "$0")/../.." && pwd)"
 T="$(mktemp -d)"; trap 'rm -rf "$T"; kill $(jobs -p) 2>/dev/null' EXIT
 pass=0; fail=0
 ok()  { pass=$((pass + 1)); printf '  ok   %s\n' "$1"; }
@@ -442,7 +442,7 @@ sed -i.bak 's/^ROUTING=off/ROUTING=on/' .sdkit/sdkit.env
 
 echo "compatibility: routing off (the default) changes nothing"
 use "$(newrepo off)"; sed -i.bak 's/^ROUTING=on/ROUTING=off/' .sdkit/sdkit.env; green medium >/dev/null
-check "ROUTING defaults to off in the shipped template"    grep -q '^ROUTING=off' "$KIT/templates/sdkit.env"
+check "ROUTING is on in the shipped template (measurement)" grep -q '^ROUTING=on' "$KIT/templates/sdkit.env"
 off1="$("$RR" verifier --handoff "$T/handoff" --cwd "$R" --host claude --tier large --dry-run 2>&1)"
 check "off: legacy tier/model resolution is unchanged"    grep -q -- '--model opus' <<< "$off1"
 eq "off: run-role makes no routing record"                "$(FAKE_ANSWER="$T/ver-pass" "$RR" developer --handoff "$T/handoff" --cwd "$R" >/dev/null 2>&1; ls "$R/.sdkit/work/t1/routing.jsonl" 2>/dev/null | wc -l | tr -d ' ')" 0

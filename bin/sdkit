@@ -7,6 +7,7 @@
 #   sdkit upgrade [--migrate [--apply]] [dir]   bring a repo up to date; --migrate moves a pre-1.0 setup into .sdkit/ -> bin/upgrade.sh
 #   sdkit install [--status|--uninstall]   register this kit on the machine for the git hooks     -> bin/install.sh
 #   sdkit report task|session|latest|history [--detailed|--json|--markdown]   the Value Report (what a task or session did, used, saved) -> scripts/report.sh
+#   sdkit pricing refresh|status   the price table <project-dir>/pricing.json (Bedrock list); `sdkit doctor --update-pricing` does the same -> scripts/pricing.sh
 #   sdkit version | where | help
 set -eu
 src="${BASH_SOURCE[0]}"
@@ -20,9 +21,10 @@ cmd="${1:-help}"; [ $# -gt 0 ] && shift
 
 case "$cmd" in
   init|doctor|sync|upgrade|install) exec "$BIN/$cmd.sh" "$@" ;;
+  pricing) exec "$ROOT/scripts/pricing.sh" "$@" ;;
   report) exec "$ROOT/scripts/report.sh" "$@" ;;
   version|--version|-v) echo "sdkit $(jq -r .version "$ROOT/.claude-plugin/plugin.json")" ;;
   where) echo "$ROOT" ;;
-  help|--help|-h) sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//' ;;
+  help|--help|-h) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//' ;;
   *) echo "sdkit: unknown command '$cmd' (try: sdkit help)" >&2; exit 2 ;;
 esac

@@ -4,7 +4,7 @@
 #   --migrate  move a repo set up before 1.0 (.claude/.codex/.agentkit + project.env) into .sdkit/ (dry run unless --apply; see migrate.sh)
 # It detects the project's hosts/mode/stack, adds files that are new in this kit version, adds missing lines to the
 # project .gitignore, runs sync.sh for copy-mode installs, prints the manual steps for the versions you skipped, and runs doctor.
-# It never overwrites project.md, sdkit.env (it only appends settings that are new), rules, known-pitfalls, settings.json or any other file the project edited.
+# It never overwrites project.md, sdkit.env (it only appends settings that are new; one exception, once: step 1b turns the old defaults TELEMETRY= and ROUTING=off on when crossing 1.3.2), rules, known-pitfalls, settings.json or any other file the project edited.
 set -eu
 . "$(dirname "$0")/lib.sh"
 MIGRATE=0; MIGRATE_ARGS=(); TARGET="$PWD"
@@ -23,6 +23,23 @@ say "detected: host=$HOSTS mode=$MODE stack=$STACK"
 
 say ""; say "1. new files (existing files are kept)"
 "$SCAFFOLD_ROOT/bin/init.sh" --host "$HOSTS" --mode "$MODE" --stack "$STACK" --dir "$KIT_DIR" "$TARGET" | grep -E '^  wrote' || say "  nothing new"
+
+# 1.3.2 turned measurement on for new setups (TELEMETRY=1, ROUTING=on). An older project still carries the old defaults (TELEMETRY empty, ROUTING=off), which
+# leaves the Value Report with gaps, so they move once, on the upgrade that crosses 1.3.2. Only those exact old defaults change; any other value is yours.
+# Afterwards the project is at >= 1.3.2 and a later "off" is never touched again.
+older_than_132=0
+if [ "$FROM" = unknown ]; then older_than_132=1
+elif [ "$FROM" != 1.3.2 ] && [ "$(printf '%s\n%s\n' "$FROM" 1.3.2 | sort -V | head -1)" = "$FROM" ]; then older_than_132=1; fi
+if [ "$older_than_132" = 1 ]; then
+  say ""; say "1b. measurement defaults (kit $FROM -> 1.3.2: telemetry and routing on)"
+  flipped=0
+  for f in "$TARGET/$KIT_DIR/sdkit.local.env" "$TARGET/$KIT_DIR/$ENV_FILE"; do
+    [ -f "$f" ] || continue
+    if grep -qE '^TELEMETRY=(""|'"''"')?$' "$f"; then sed -i.bak -E 's/^TELEMETRY=(""|'"''"')?$/TELEMETRY=1/' "$f" && rm -f "$f.bak"; say "  set    $(basename "$f"): TELEMETRY=1 (was empty)"; flipped=1; fi
+    if grep -qE '^ROUTING=("?off"?)$' "$f"; then sed -i.bak -E 's/^ROUTING="?off"?$/ROUTING=on/' "$f" && rm -f "$f.bak"; say "  set    $(basename "$f"): ROUTING=on (was off)"; flipped=1; fi
+  done
+  [ "$flipped" = 1 ] && say "  to keep either off, set it back now: the kit leaves a project at 1.3.2 or later alone" || say "  already set"
+fi
 
 say ""; say "2. .gitignore lines"
 gi="$TARGET/$KIT_DIR/.gitignore"

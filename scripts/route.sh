@@ -35,7 +35,9 @@ find_file() {  # find_file <core-relative name> <project-dir name>: the kit's co
 tierenv() { local f; f="$(find_file tiers.env tiers.env)" && sed -n "s/^$1=//p" "$f" | tail -1; }
 ADAPTERS="$(find_file adapters.json adapters.json 2>/dev/null || true)"
 now_s() { date +%s; }
-prices_json() { sdkit_prices_flat "${TELEMETRY_PRICES:-$top/$KIT_DIR/pricing.json}"; }   # the user's price table (usd per million tokens), flattened to what is in force today; the kit ships none
+# flattened once per process: this runs in command substitutions, where a lazy cache would be lost, and it used to be rebuilt (jq + date) on every use
+PRICES_FLAT="$(sdkit_prices_flat "${TELEMETRY_PRICES:-$top/$KIT_DIR/pricing.json}")"
+prices_json() { printf '%s' "$PRICES_FLAT"; }   # the user's price table (usd per million tokens), flattened to what is in force today; the kit ships none
 # Money is priced by the SAME resolver as usage.sh (env.sh SDKIT_PRICE_JQ: exact id, else the id without a -YYYYMMDD suffix; provider; effective window on the record date), never by a private lookup.
 PT="$(sdkit_price_table "${TELEMETRY_PRICES:-$top/$KIT_DIR/pricing.json}")"
 PJQ="$SDKIT_PRICE_JQ"'def nrm: . + {model: (.model // ""), provider: (.provider // ""), in: (.in // 0), out: (.out // 0), cache_read: (.cache_read // 0), cache_write: (.cache_write // 0)};'

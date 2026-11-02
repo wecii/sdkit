@@ -79,10 +79,10 @@ def errs:
 run_id() {  # run_id <task>: SDKIT_RUN_ID, else the run in work/<task>/run.id (created on first use)
   [ -n "${SDKIT_RUN_ID:-}" ] && { printf '%s' "$SDKIT_RUN_ID"; return 0; }
   local f="$work/$1/run.id" id=""
-  [ -s "$f" ] && { cat "$f"; return 0; }
+  [ -s "$f" ] && { printf '%s' "$(<"$f")"; return 0; }
   sdkit_lock "$f"
   [ -s "$f" ] || { new_run_id > "$f"; }
-  id="$(cat "$f")"; sdkit_unlock "$f"; printf '%s' "$id"
+  id="$(<"$f")"; sdkit_unlock "$f"; printf '%s' "$id"
 }
 new_run_id() { printf 'r%s-%s%s' "$(date -u +%Y%m%d%H%M%S)" "$$" "$RANDOM"; }
 
@@ -109,12 +109,12 @@ cmd_emit() {
   [ -n "$type" ] || exit 0
   [ -n "$task" ] || task="$(default_task)"
   case "$task" in ''|*[!A-Za-z0-9_.-]*) [ "$strict" = 1 ] && { echo "telemetry emit: bad task slug" >&2; exit 2; }; exit 0 ;; esac
-  mkdir -p "$work/$task" 2>/dev/null || exit 0
+  [ -d "$work/$task" ] || mkdir -p "$work/$task" 2>/dev/null || exit 0
   if [ "$type" = task.start ] && [ -z "${SDKIT_RUN_ID:-}" ] && [ -z "$run" ]; then
     run="$(new_run_id)"; { sdkit_lock "$work/$task/run.id"; printf '%s' "$run" > "$work/$task/run.id"; sdkit_unlock "$work/$task/run.id"; } 2>/dev/null
   fi
   [ -n "$run" ] || run="$(run_id "$task")"
-  note="$(printf '%s' "$note" | tr '\n\r\t' '   ' | cut -c1-160)"
+  [ -z "$note" ] || note="$(printf '%s' "$note" | tr '\n\r\t' '   ' | cut -c1-160)"
   # drop numbers that are not numbers (a missing value is "unavailable", never 0)
   local clean=() i=0 n=${#args[@]} key val
   while [ "$i" -lt "$n" ]; do
@@ -125,7 +125,7 @@ cmd_emit() {
     esac
     clean+=("$key" "$val")
   done
-  local line
+  local line errf=/dev/null; [ "$strict" = 1 ] && errf="${TMPDIR:-/tmp}/.sdkit-telemetry.err.$$"
   line="$(jq -nc --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg type "$type" --arg task "$task" --arg run "$run" --arg mode "$mode" --arg note "$note" \
     "$SCHEMA"'
     $ARGS.positional as $a | [range(0; $a | length; 2) as $i | [$a[$i], $a[$i + 1]]] as $p
@@ -137,10 +137,10 @@ cmd_emit() {
     # a number that is not there is unavailable, whatever the caller claimed
     | if .type == "agent.end" and ((has("in") or has("out")) | not) then .q.tokens = "unavailable" else . end
     | if .type == "agent.end" and (has("dur_ms") | not) then .q.duration = "unavailable" else . end
-    | if (errs | length) > 0 then error(errs | join("; ")) else . end' --args "${clean[@]+"${clean[@]}"}" 2>"${TMPDIR:-/tmp}/.sdkit-telemetry.err.$$")" || {
-      [ "$strict" = 1 ] && { cat "${TMPDIR:-/tmp}/.sdkit-telemetry.err.$$" >&2; rm -f "${TMPDIR:-/tmp}/.sdkit-telemetry.err.$$"; exit 2; }
-      rm -f "${TMPDIR:-/tmp}/.sdkit-telemetry.err.$$"; exit 0; }
-  rm -f "${TMPDIR:-/tmp}/.sdkit-telemetry.err.$$"
+    | if (errs | length) > 0 then error(errs | join("; ")) else . end' --args "${clean[@]+"${clean[@]}"}" 2>"$errf")" || {
+      [ "$strict" = 1 ] && { cat "$errf" >&2; rm -f "$errf"; exit 2; }
+      exit 0; }
+  [ "$strict" = 1 ] && rm -f "$errf"
   # O_APPEND writes of one short line do not interleave: concurrent agents need no lock here
   printf '%s\n' "$line" >> "$work/$task/events.jsonl" 2>/dev/null
   exit 0

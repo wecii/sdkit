@@ -2,9 +2,9 @@
 # F05-A tests: the task benchmark harness (bench/tbench.sh). Deterministic and free: no model, no network; the only "agent" is the simulation fixture.
 # Covers: manifests, checksums, task fixtures, workspace isolation, hidden-test separation, strategies, metrics parsing, missing usage, interruption,
 # timeouts, duplicate run ids, result immutability, report arithmetic, failure accounting, simulation labeling, the real-run gate, and an untouched source tree.
-# Run: tests/tbench.test.sh
+# Run: tests/slow/tbench.test.sh
 set -u
-KIT="$(cd "$(dirname "$0")/.." && pwd)"
+KIT="$(cd "$(dirname "$0")/../.." && pwd)"
 TB="$KIT/bench/tbench.sh"
 T="$(mktemp -d)"; trap 'chmod -R u+w "$T" 2>/dev/null; rm -rf "$T"' EXIT
 pass=0; fail=0
@@ -285,7 +285,7 @@ eq "with isolation in place F05-A still starts no real agent (stops after the ga
 check "…nothing was run"                              bash -c "[ -z \"\$(ls '$T/r1/runs' 2>/dev/null)\" ]"
 
 echo "existing suites and tree hygiene"
-check "bash -n on the new scripts"                    bash -c "bash -n '$KIT/bench/tbench.sh' && bash -n '$KIT/bench/lib/sim-agent.sh' && bash -n '$KIT/tests/tbench.test.sh'"
+check "bash -n on the new scripts"                    bash -c "bash -n '$KIT/bench/tbench.sh' && bash -n '$KIT/bench/lib/sim-agent.sh' && bash -n '$KIT/tests/slow/tbench.test.sh'"
 check "JSON files are valid"                          bash -c "for f in '$KIT'/bench/tasks/*/task.json '$KIT'/bench/tasks/registry.json '$KIT'/bench/strategies/*.json '$KIT'/bench/sim/sim.json; do jq . \$f >/dev/null || exit 1; done"
 check "the runner compiles"                           python3 -c "import ast,sys; ast.parse(open('$KIT/bench/lib/runlimited.py').read())"
 check "adapters are in sync"                          "$KIT/bin/build-adapters.sh" --check

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # F04 tests: independent evidence for high risk (verifier + reviewer + security-auditor), trust by registered execution, staleness, spoofing,
-# duplicates, interrupted runs, concurrency, atomic refusals, profile regressions, adapter claims. Run: tests/evidence.test.sh
+# duplicates, interrupted runs, concurrency, atomic refusals, profile regressions, adapter claims. Run: tests/slow/evidence.test.sh
 set -u
-KIT="$(cd "$(dirname "$0")/.." && pwd)"
+KIT="$(cd "$(dirname "$0")/../.." && pwd)"
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 pass=0; fail=0
 ok()  { pass=$((pass + 1)); printf '  ok   %s\n' "$1"; }
@@ -37,6 +37,12 @@ last_reason() { jq -r 'select(.type=="phase.reject") | .reason // "none"' "$EV" 
 green() {
   "$SDD" start t1 --risk "$1" ${2:+--profile "$2"} --proposal openspec/changes/t1/proposal.md >/dev/null && "$SDD" advance proposed >/dev/null \
     && sdd_red >/dev/null && echo "x$RANDOM" >> src/a.sh && sdd_green >/dev/null
+}
+# green_repo <name> <risk> [profile]: a repo with the task in phase green on a changed file. Built once per risk/profile (about 6 s), then copied.
+green_repo() {
+  local n="$1" k="tpl-$2-${3:-std}"
+  if [ ! -d "$T/$k" ]; then local t; t="$(newrepo "$k")"; ( use "$t"; green "$2" ${3:+"$3"} ) >/dev/null 2>&1; fi
+  cp -R "$T/$k" "$T/$n"; echo "$T/$n"
 }
 
 # the four answers a role can give
@@ -94,7 +100,7 @@ printf 'SUMMARY: 0 critical, 0 high, 0 medium, 0 low\nVERDICT: PASS\n' > "$T/aud
 eq "the verifier block is unchanged"                    "$("$PV" "$T/ver-pass" >/dev/null; echo $?)" 0
 
 echo "high risk: nothing reaches verified without three trusted PASSes"
-R="$(newrepo hi)"; use "$R"; green high
+R="$(green_repo hi high)"; use "$R"
 eq "high risk requires three roles"                     "$("$WF" evidence-roles)" "verifier reviewer security-auditor"
 eq "policy --json lists them"                           "$("$SDD" policy --json | jq -r '.evidence_roles | join(",")')" "verifier,reviewer,security-auditor"
 nocheck "no evidence at all: verified refused"          "$SDD" advance verified
@@ -116,7 +122,7 @@ nocheck "evidence after the task is done is refused"    "$SDD" _evidence reviewe
 eq "…as 'no task' (exit 4)"                             "$("$SDD" _evidence reviewer PASS --source manual >/dev/null 2>&1; echo $?)" 4
 
 echo "each failure mode, one at a time"
-fresh() { local n="$1"; R="$(newrepo "$n")"; use "$R"; green high; }
+fresh() { R="$(green_repo "$1" high)"; use "$R"; }
 fresh blk1; run verifier "$T/ver-pass" a1 >/dev/null; run reviewer "$T/rev-block" a2 >/dev/null; run security-auditor "$T/aud-pass" a3 >/dev/null
 nocheck "reviewer BLOCK: refused"                       "$SDD" advance verified
 eq "…evidence-block"                                    "$(last_reason)" evidence-block
@@ -303,7 +309,7 @@ nocheck "a floor-high file with a medium label is refused (the floor still holds
 "$SDD" abort >/dev/null
 
 echo "ci-check (the server-side backstop) for high risk"
-R="$(newrepo ci)"; use "$R"; green high; all_pass >/dev/null; "$SDD" advance verified >/dev/null
+R="$(green_repo ci high)"; use "$R"; all_pass >/dev/null; "$SDD" advance verified >/dev/null
 A=.sdkit/attestations/t1.json
 check "complete attestation passes"                     "$SDD" ci-check
 cp $A "$T/att"; jq 'del(.evidence.reviewer)' "$T/att" > $A
@@ -317,7 +323,7 @@ cp "$T/att" $A
 
 echo "F04.1: adversarial runtime cases (category A: ordinary agent output and workflow commands)"
 nostop() { jq -nc --arg r "$1" --arg id "$2" '{hook_event_name:"SubagentStop",agent_type:$r,agent_id:$id,last_assistant_message:""}' | "$KIT/hooks/record-verdict.sh"; }
-R="$(newrepo adv)"; use "$R"; green high
+R="$(green_repo adv high)"; use "$R"
 nocheck "a run-role claim with no registered spawn is refused"      "$SDD" _evidence reviewer PASS --source run-role --run forged
 nocheck "…even for a made-up run id that looks like a run-role id"  "$SDD" _evidence security-auditor PASS --source run-role --run rr-1-2-3
 "$SDD" _evidence reviewer PASS --source hook --run h1 >/dev/null
@@ -328,7 +334,7 @@ spawn security-auditor; stop security-auditor "$T/aud-pass" "" >/dev/null
 eq "a SubagentStop without agent_id is never trusted"               "$(ev_state security-auditor)" untrusted
 nocheck "…so verified is refused"                                   "$SDD" advance verified
 # interrupted agent: stops with no answer; its registration must not be consumed by a later, different run
-R="$(newrepo intr)"; use "$R"; green high
+R="$(green_repo intr high)"; use "$R"
 spawn reviewer; nostop reviewer a-int
 eq "an interrupted agent leaves no open registration"               "$(jq '.spawns | length' "$ST")" 0
 eq "…and no evidence"                                               "$(ev_state reviewer)" missing
@@ -341,7 +347,7 @@ nostop reviewer ""
 eq "a stop with no answer and no agent_id closes nothing"           "$(jq '.spawns | length' "$ST")" 1
 eq "_spawn-close with no run and no role is a no-op"                "$("$SDD" _spawn-close >/dev/null 2>&1; echo $?)" 0
 # parallel stops of the same role on the same diff: the state stays valid, trust is never granted twice for one registration
-R="$(newrepo par)"; use "$R"; green high
+R="$(green_repo par high)"; use "$R"
 for i in 1 2 3 4; do spawn reviewer; done; for i in 1 2 3 4; do stop reviewer "$T/rev-pass" p$i >/dev/null & done; wait
 check "state.json is valid JSON after parallel records"             jq -e . "$ST"
 eq "all registrations were consumed"                                "$(jq '.spawns | length' "$ST")" 0

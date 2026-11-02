@@ -263,6 +263,35 @@ eq "the old 'log' options still work (no --id, no session)"              "$("$US
 eq "token budget still counts in + out + cache_write"                    "$(printf 'TOKEN_BUDGET_TASK=100\n' >> .sdkit/sdkit.env; "$US" log --slug k3 --role d --in 10 --out 20 --cache-read 999 --cache-write 5 >/dev/null; "$US" budget k3 | grep -o '[0-9]* of 100')" "35 of 100"
 check "the report's old headline strings survive"                         bash -c "'$US' report k3 | grep -q 'cache hit rate:'"
 
+echo "a session that serves several tasks, and a subagent the hook could not read"
+R="$(newrepo win)"; cd "$R" || exit 1; export CLAUDE_PROJECT_DIR="$R"; mkdir -p .sdkit/work/w1 .sdkit/.sdd; echo '{}' > .sdkit/work/w1/state.json
+printf '{"task":"w1","startedAt":"2026-03-01T10:00:00Z"}' > .sdkit/.sdd/state.json
+atx() { jq -nc --arg id "$1" --argjson o "$2" --arg ts "$3" '{type:"assistant", uuid:("u-"+$id), sessionId:"sessW", timestamp:$ts, message:{id:$id, model:"m-a", usage:{input_tokens:1, output_tokens:$o, cache_read_input_tokens:1000, cache_creation_input_tokens:10}}}'; }
+{ atx e1 100 "2026-03-01T09:00:00.500Z"; atx e2 40 "2026-03-01T10:00:00.200Z"; atx e3 7 "2026-03-01T11:00:00.000Z"; } > "$T/win.jsonl"
+eq "extract --since counts only the requests from the task start on"       "$(jv '[.messages,.out,.cache_read]|join(",")' "$US" extract "$T/win.jsonl" --since 2026-03-01T10:00:00Z)" "2,47,2000"
+eq "...without --since the whole session counts"                            "$(jv .out "$US" extract "$T/win.jsonl")" 147
+eq "window prints the open task's start"                                    "$("$US" window)" "2026-03-01T10:00:00Z"
+printf '{"task":"other","startedAt":"2026-03-01T10:00:00Z"}' > .sdkit/.sdd/state.json
+eq "...nothing when the open task is not the active slug's"                 "$("$US" window)" ""
+printf '{"task":"w1","startedAt":"2026-03-01T10:00:00Z"}' > .sdkit/.sdd/state.json
+jq -nc --arg t "$T/win.jsonl" '{hook_event_name:"Stop", session_id:"sessW", transcript_path:$t}' | "$HK"
+eq "the Stop hook books the orchestrator from the task start (47, not 147)" "$(jq -rs 'map(.out)|add' .sdkit/work/w1/usage.jsonl)" 47
+# a subagent whose payload has no agent_type: the role comes from the .meta.json next to its transcript
+mkdir -p "$T/tdir/sessW/subagents"; { atx s1 25 "2026-03-01T10:30:00.000Z"; } > "$T/tdir/sessW/subagents/agent-agM.jsonl"
+printf '{"agentType":"spec-driven-kit:analyst","finished":true}' > "$T/tdir/sessW/subagents/agent-agM.meta.json"
+rm -f .sdkit/work/w1/usage.jsonl
+jq -nc --arg a "$T/tdir/sessW/subagents/agent-agM.jsonl" '{hook_event_name:"SubagentStop", session_id:"sessW", transcript_path:"/none", agent_transcript_path:$a, agent_id:"agM"}' | "$HK"
+eq "a SubagentStop without agent_type takes the role from the meta file"    "$(jq -r '[.role,.id,.out]|join(",")' .sdkit/work/w1/usage.jsonl)" "analyst,agM,25"
+# the hook ran before the transcript existed: unmeasured mark; reconcile fills it in later
+rm -f .sdkit/work/w1/usage.jsonl; { atx s2 60 "2026-03-01T10:40:00.000Z"; } > "$T/tdir/sessW/subagents/agent-agL.jsonl.later"
+jq -nc '{hook_event_name:"SubagentStop", session_id:"sessW", transcript_path:"/none", agent_id:"agL"}' | "$HK"
+eq "an unreadable subagent without a type is an unmeasured 'subagent'"      "$(jq -r '[.role,.tq]|join(",")' .sdkit/work/w1/usage.jsonl)" "subagent,unavailable"
+mv "$T/tdir/sessW/subagents/agent-agL.jsonl.later" "$T/tdir/sessW/subagents/agent-agL.jsonl"
+printf '{"agentType":"spec-driven-kit:reviewer"}' > "$T/tdir/sessW/subagents/agent-agL.meta.json"
+eq "reconcile reports the lines it wrote"                                   "$(CLAUDE_TRANSCRIPT_DIR="$T/tdir" "$US" reconcile --slug w1)" 1
+eq "...the unmeasured mark is replaced by the measured run (role, tokens)"  "$(jq -rs 'map("\(.role):\(.tq // "actual"):\(.out)")|join(",")' .sdkit/work/w1/usage.jsonl)" "reviewer:actual:60"
+eq "...and a second reconcile finds nothing left to do"                     "$(CLAUDE_TRANSCRIPT_DIR="$T/tdir" "$US" reconcile --slug w1)" 0
+
 echo
 echo "usage: $pass passed, $fail failed"
 [ "$fail" = 0 ]

@@ -44,13 +44,14 @@ Smoke test first: `tests/run.sh` exercises the scripts (verdict, plan parity, wr
 
 ```bash
 tests/run.sh                                                        # smoke test
-tests/sdd.test.sh && tests/shared.test.sh                          # phase machine, shared files
+tests/sdd.test.sh && tests/slow/shared.test.sh                          # phase machine, shared files
 tests/memory.test.sh && tests/budget.test.sh                       # project memory, token budget, hook wiring
 tests/sdkit-dir.test.sh                                            # .sdkit layout, appending missing settings, old layout, --migrate
-tests/risk-floor.test.sh                                            # risk floor (RISK_FLOOR_GLOBS): label floor, CI bypass attempts
+tests/slow/risk-floor.test.sh                                            # risk floor (RISK_FLOOR_GLOBS): label floor, CI bypass attempts
 tests/hardening.test.sh                                            # F00.5: verdict validation, concurrent writes, settings files not executed, task resolution, cache, STACK
 tests/workflow.test.sh                                             # F03: profiles, transition table, refusal reasons, contract policy, concurrency, telemetry
-tests/report.test.sh                                               # Value Report: task/session report, savings arithmetic, double counting, one-shot generation, no LLM call
+tests/slow/report.test.sh                                               # Value Report: task/session report, savings arithmetic, double counting, one-shot generation, no LLM call
+tests/pricing.test.sh                                             # price table: refresh from the Bedrock list, status, init and doctor
 tests/usage.test.sh                                               # F07: usage/cost accounting, price resolution, deduplication, coverage warnings
 tests/efficiency.test.sh                                           # F08: verdict normalisation, format/semantic split, PASS without evidence, early DoD check
 tests/context.test.sh                                              # F09: bounded output, ENVELOPE/1, error lines preserved
@@ -66,16 +67,19 @@ tests/recover.test.sh                                              # F18: recove
 tests/security.test.sh                                             # F19: redaction, audit chain, static policy
 tests/gate-security.test.sh                                        # review findings: trusted CI gate, fail-closed fingerprint, RED/GREEN binding, path normalisation, guard-pr bypasses
 tests/ci.test.sh                                                   # F20: cheap PR check, regression history
-tests/evidence.test.sh                                             # F04: high-risk evidence (3 roles), trust/identity, staleness, forgery, concurrency, adapter claims
-tests/contract.test.sh                                             # F02: agent contracts (validation, recording, hook, run-role, verifier independence, backward compatibility, contract benchmarks)
-tests/route.test.sh                                               # F06: routing decisions, registry, scheduling, retry/escalation, budget, run-role integration (fake CLI; no model call)
-tests/tbench.test.sh                                               # F05-A: task benchmark (task registry, isolation, hidden test separation, metric ingestion, seal, report, real-run gate; no model call)
-tests/telemetry.test.sh                                            # F01: event schema, correlation, concurrency, failure isolation, benchmark (simulated; no real LLM run)
+tests/slow/evidence.test.sh                                             # F04: high-risk evidence (3 roles), trust/identity, staleness, forgery, concurrency, adapter claims
+tests/slow/contract.test.sh                                             # F02: agent contracts (validation, recording, hook, run-role, verifier independence, backward compatibility, contract benchmarks)
+tests/slow/contract-bench.test.sh                                     # F02: the contract fixtures and F01 scenarios, simulated, run in parallel
+tests/slow/route.test.sh                                               # F06: routing decisions, registry, scheduling, retry/escalation, budget, run-role integration (fake CLI; no model call)
+tests/slow/tbench.test.sh                                               # F05-A: task benchmark (task registry, isolation, hidden test separation, metric ingestion, seal, report, real-run gate; no model call)
+tests/slow/telemetry.test.sh                                            # F01: event schema, correlation, concurrency, failure isolation, benchmark (simulated; no real LLM run)
 bin/build-adapters.sh --check                                       # are the roles and generated files in sync
 bash -n hooks/*.sh bin/*.sh bin/emit/*.sh scripts/*.sh stacks/*/scripts/*.sh adapters/git/*  # syntax
 jq . hooks/hooks.json .claude-plugin/*.json templates/settings.*.json >/dev/null
 shellcheck hooks/*.sh bin/*.sh scripts/*.sh                         # if installed
 ```
+
+Speed: a file in `tests/` must stay under 30 s. `tests/fast.sh` runs them in parallel, prints each file's time and flags one over the budget (`-b SEC`); you never need the whole suite while developing: `scripts/test-select.sh run` runs only the suites your change maps to (`tests/test-map.conf`), several at a time (`--jobs N` or `TEST_SELECT_JOBS`, default a third of the cores, `1` = one after another; results always print in map order), and reuses a green result for an identical tree. `tests/slow/` holds the end-to-end tests whose single run is a whole simulated workflow (14-40 s each); they stay out of the everyday loop and run with `tests/fast.sh --all` (CI, before a release). `tests/prof.sh <file>` shows where one file spends its time, section by section.
 
 Then try it end to end in a throwaway repo:
 

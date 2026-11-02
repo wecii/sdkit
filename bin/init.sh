@@ -124,6 +124,8 @@ ENV_NEW=0; [ -f "$TARGET/$KIT_DIR/$ENV_FILE" ] || ENV_NEW=1
 install_template templates/sdkit.env "$KIT_DIR/$ENV_FILE"
 install_template templates/project.md "$KIT_DIR/project.md"
 install_template templates/known-pitfalls.md "$KIT_DIR/known-pitfalls.md"
+# price table (Bedrock list, USD per million tokens): without it every cost figure is N/A. Kit-written; `sdkit doctor --update-pricing` refreshes it, a table you edit is never touched
+install_template templates/pricing.json "$KIT_DIR/pricing.json"
 install_template templates/adr/TEMPLATE.md "$KIT_DIR/adr/TEMPLATE.md"
 install_template "$GITIGNORE_TPL" "$KIT_DIR/.gitignore"
 if want_host claude; then
@@ -202,7 +204,7 @@ install_scripts() {
   for f in "$SCAFFOLD_ROOT"/stacks/$STACK/scripts/*.sh; do install_managed "stacks/$STACK/scripts/$(basename "$f")" "$KIT_DIR/scripts/$(basename "$f")"; done
   [ -f "$SCAFFOLD_ROOT/stacks/$STACK/scripts/steps.sh" ] && grep -q node-lib "$SCAFFOLD_ROOT/stacks/$STACK/scripts/steps.sh" \
     && install_managed "stacks/_node/scripts/node-lib.sh" "$KIT_DIR/scripts/node-lib.sh"
-  for s in env sdd resolve-base open-pr guard plan-waves worktree verify-core verify-lib state parse-verdict check-plan-parity check-writes usage memory lookup-cache run-role route workflow contract telemetry dod-check audit redact digest adapter dispatch knowledge recover test-select pr-check; do
+  for s in env sdd resolve-base open-pr guard plan-waves worktree verify-core verify-lib state parse-verdict check-plan-parity check-writes usage memory lookup-cache run-role route workflow contract telemetry dod-check audit redact digest adapter dispatch knowledge recover test-select pr-check pricing; do
     install_managed "scripts/$s.sh" "$KIT_DIR/scripts/$s.sh"
   done
   chmod +x "$TARGET/$KIT_DIR"/scripts/*.sh

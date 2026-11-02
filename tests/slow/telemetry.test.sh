@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # F01 tests: event schema and validation, correlation ids, concurrent recording, missing usage data, failure isolation, the instrumented
 # boundaries (phase machine, state.sh, run-role.sh, hooks), the summary, and the benchmark framework (deterministic only: nothing here
-# starts a real host CLI). Run: tests/telemetry.test.sh
+# starts a real host CLI). Run: tests/slow/telemetry.test.sh
 set -u
-KIT="$(cd "$(dirname "$0")/.." && pwd)"
+KIT="$(cd "$(dirname "$0")/../.." && pwd)"
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 pass=0; fail=0
 ok()  { pass=$((pass + 1)); printf '  ok   %s\n' "$1"; }
@@ -55,7 +55,7 @@ O="$(newrepo off)"; sed -i.bak '/TELEMETRY/d' "$O/.sdkit/sdkit.local.env"; rm -f
 check "TELEMETRY unset: nothing is written"            test ! -e "$(ev "$O" t1)"
 ( cd "$O" && CLAUDE_PROJECT_DIR="$O" "$TL" emit task.start --task t1 --force )
 check "--force writes anyway"                          test -s "$(ev "$O" t1)"
-check "the shipped template leaves it off"             bash -c "grep -qE '^TELEMETRY=\$' '$KIT/templates/sdkit.local.env'"
+check "the shipped template turns it on (measurement)" bash -c "grep -qE '^TELEMETRY=1\$' '$KIT/templates/sdkit.local.env'"
 
 echo "correlation ids"
 cd "$R" || exit 1; export CLAUDE_PROJECT_DIR="$R"

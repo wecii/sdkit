@@ -20,13 +20,19 @@ if [ "$event" = SubagentStop ]; then
 else
   transcript="$(jget .transcript_path)"; role=orchestrator; id="session-$session"; kind=snapshot   # every turn end re-reads the whole session: a snapshot
 fi
+# the payload may carry no agent type; Claude Code keeps it in the .meta.json next to the agent's transcript
+if [ -z "$role" ] && [ "$event" = SubagentStop ]; then
+  meta="${transcript%.jsonl}.meta.json"; [ -f "$meta" ] && { role="$(jq -r '.agentType // empty' "$meta" 2>/dev/null)"; role="${role##*:}"; }
+fi
 [ -n "$role" ] || role=subagent
 if [ ! -f "$transcript" ]; then
   # an execution happened but its usage cannot be read: leave a mark (unmeasured, never zero) so it shows up as a gap instead of vanishing
   [ "$event" = SubagentStop ] && [ -n "$id" ] && "$script" log --role "$role" --host claude --id "$id" --session "$session" --kind final --tq unavailable --source "$event" >/dev/null 2>&1
   exit 0
 fi
-ex="$("$script" extract "$transcript" 2>/dev/null)" || exit 0
+# the orchestrator's transcript is the whole session, cumulative over every task it served: count only from the open task's start
+since=""; [ "$event" = SubagentStop ] || since="$("$script" window 2>/dev/null)"
+ex="$("$script" extract "$transcript" ${since:+--since "$since"} 2>/dev/null)" || exit 0
 [ -n "$ex" ] || exit 0
 [ "$(jq -r '.messages' <<< "$ex" 2>/dev/null)" -gt 0 ] 2>/dev/null || exit 0
 [ -n "$session" ] || session="$(jq -r '.session' <<< "$ex")"

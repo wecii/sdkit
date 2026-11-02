@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Value Report tests: task and session reports, terminal states, savings arithmetic and honesty, deduplication, idempotency, display safety, exports,
-# the hooks, and the guarantee that reporting calls no model. Deterministic: fixture ledgers and events only, no host CLI, no network. Run: tests/report.test.sh
+# the hooks, and the guarantee that reporting calls no model. Deterministic: fixture ledgers and events only, no host CLI, no network. Run: tests/slow/report.test.sh
 set -u
-KIT="$(cd "$(dirname "$0")/.." && pwd)"; RP="$KIT/scripts/report.sh"; US="$KIT/scripts/usage.sh"; TL="$KIT/scripts/telemetry.sh"; SDD="$KIT/scripts/sdd.sh"
+KIT="$(cd "$(dirname "$0")/../.." && pwd)"; RP="$KIT/scripts/report.sh"; US="$KIT/scripts/usage.sh"; TL="$KIT/scripts/telemetry.sh"; SDD="$KIT/scripts/sdd.sh"
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 pass=0; failed=0
 eq() { if [ "$2" = "$3" ]; then pass=$((pass + 1)); echo "  ok   $1"; else failed=$((failed + 1)); echo "  FAIL $1 (got '$2', wanted '$3')"; fi; }
@@ -98,6 +98,8 @@ eq  "the requested status is kept"            "$(J .task.status_requested)" comp
 mk live; eq "an open task is a live view, not terminal" "$("$RP" task t1 --json | jq -r '.task.terminal')" false
 eq  "live view is not stored"                 "$(ls .sdkit/work/_reports/task 2>/dev/null | wc -l | tr -d ' ')" 0
 has "live view says so"                       "$("$RP" task t1)" "t1 is IN-PROGRESS"
+eq  "an open task's quality gate is pending, not 'Not run'"  "$("$RP" task t1 --json | jq -r '.task.quality_gates.state')" Pending
+eq  "role purposes stay short and are never cut mid-word"    "$("$RP" task t1 --json | jq -r '[.roles[].purpose // empty | select(length > 112)] | length')" 0
 
 echo "# missing pricing, missing baseline, negative savings"
 mk nop m-big no; "$RP" finalize --status completed --slug t1 --quiet
@@ -220,5 +222,22 @@ eq  "no host CLI or network tool was called"   "$([ -e "$T/called" ] && cat "$T/
 eq  "the script names no host CLI"             "$(grep -cE '(^|[^a-z_-])(claude|codex|opencode|gemini|cursor-agent|curl|wget) ' "$RP")" 0
 mk perf; s0="$(date +%s)"; for i in 1 2 3 4 5; do "$RP" finalize --status completed --slug t1 --force --quiet; done; s1="$(date +%s)"
 echo "  info: 5 task reports with a 3-run ledger took $((s1 - s0))s"; eq "report generation is fast (5 in under 10s)" "$([ $((s1 - s0)) -lt 10 ] && echo yes)" yes
+
+echo "# export to <project-dir>/reports at the end signal"
+mk ex; printf 'REPORT_EXPORT=on\n' >> .sdkit/sdkit.env
+"$RP" finalize --status completed --slug t1 --quiet
+eq  "REPORT_EXPORT=on: the task report is also written under the task id"  "$(jq -r '.task.id' .sdkit/reports/t1.json 2>/dev/null)" t1
+has "...with a readable markdown copy"                                      "$(cat .sdkit/reports/t1.md 2>/dev/null)" "t1"
+eq  "...and the working copy stays in work/_reports"                        "$(ls .sdkit/work/_reports/task/t1@*.json 2>/dev/null | head -1 | grep -c .)" 1
+rm -rf .sdkit/reports; "$RP" finalize --status completed --slug t1 --quiet
+eq  "a second end signal (report exists) still restores a missing export"   "$([ -f .sdkit/reports/t1.json ] && echo yes)" yes
+mk ex2; "$RP" finalize --status completed --slug t1 --quiet
+eq  "without REPORT_EXPORT nothing is exported"                              "$([ -e .sdkit/reports ] && echo yes || echo no)" no
+mk ex3; printf 'REPORT_EXPORT=on\n' >> .sdkit/sdkit.env; "$RP" finalize --status completed --slug t1 --quiet; rm -rf .sdkit/reports
+"$RP" session-end --session s1 --reason other --quiet
+eq  "a session that served a task is not exported on its own (the task report covers it)" "$([ -e .sdkit/reports/s1.json ] && echo yes || echo no)" no
+mk ex4; printf 'REPORT_EXPORT=on\n' >> .sdkit/sdkit.env; "$US" log --role orchestrator --model m-small --in 10 --out 10 --id session-only --session only1 --kind final --slug _misc >/dev/null
+"$RP" session-end --session only1 --reason other --quiet
+eq  "a session with no task is exported under its session id"               "$(jq -r '.session.id // .session // empty' .sdkit/reports/only1.json 2>/dev/null | head -1)" only1
 
 echo "report: $pass passed, $failed failed"; [ "$failed" = 0 ]

@@ -46,7 +46,9 @@ The old fields stay as they are; the new fields are additive (a row without them
 
 ## 3. Pricing
 
-`<project-dir>/pricing.json` (or `TELEMETRY_PRICES`). **The kit contains no prices**; fill in the values from your own contract. USD / million tokens.
+`<project-dir>/pricing.json` (or `TELEMETRY_PRICES`). `sdkit init` copies a starting table (`templates/pricing.json`): the public **AWS Bedrock** list for the Claude models (global cross-region inference, standard tier). It is a snapshot, not your contract: check it against your own prices. USD / million tokens.
+
+`scripts/pricing.sh refresh` (or `sdkit doctor --update-pricing`) rebuilds it from the live list; `pricing.sh status` (run by `doctor`) reports a missing, unreadable or stale table (kit-written, over 90 days), models in your ledgers that it cannot price, and a `REPORT_BASELINE_MODEL` that is not in it. Only a table the script wrote (`"managed_by": "sdkit pricing"`) is ever replaced; delete that key to take the table over by hand. Not modelled: 1-hour cache writes, batch tiers and long-context surcharges (`cache_write` is the 5-minute rate); models without a global price (older ones) are left out of the snapshot.
 
 ```json
 { "version": 2, "currency": "USD",

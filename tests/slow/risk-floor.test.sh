@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Risk floor (RISK_FLOOR_GLOBS, ADR-0005): off by default, checked against the files the diff really touches, enforced when the tests go
-# green, when the task is verified and in ci-check, where an attestation of a lower risk does not count. Run: tests/risk-floor.test.sh
+# green, when the task is verified and in ci-check, where an attestation of a lower risk does not count. Run: tests/slow/risk-floor.test.sh
 set -u
-KIT="$(cd "$(dirname "$0")/.." && pwd)"
+KIT="$(cd "$(dirname "$0")/../.." && pwd)"
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 pass=0; fail=0
 ok()  { pass=$((pass + 1)); printf '  ok   %s\n' "$1"; }
