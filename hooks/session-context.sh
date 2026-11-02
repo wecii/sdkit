@@ -29,4 +29,14 @@ if [ "${MEMORY:-}" = 1 ]; then
   mem_index="$([ -x "$mem_script" ] && "$mem_script" autoload 2>/dev/null)"
   [ -n "$mem_index" ] && message="$message Project memory index (open an entry only when its line is relevant; add with memory.sh): $mem_index"
 fi
+# roles the project moved to another tier than their agent file's (AGENT_<ROLE>_TIER in sdkit.env): the orchestrator must pass that tier's model on the Agent call
+if type sdkit_role_tier >/dev/null 2>&1; then
+  _moved=""
+  for _rf in "$PLUGIN_ROOT"/core/roles/*.md "$PROJECT_DIR/$KIT_DIR"/roles/*.md; do
+    [ -f "$_rf" ] || continue; _r="$(basename "$_rf" .md)"; case "$_r" in README|orchestrator) continue ;; esac
+    _own="$(sdkit_fm "$_rf" tier)"; _own="${_own:-standard}"; _eff="$(sdkit_role_tier "$_r" "$_own")"
+    [ "$_eff" = "$_own" ] || _moved="$_moved $_r=$_eff(model $(sdkit_tier_model "$_eff" "$PROJECT_DIR"))"
+  done
+  [ -z "$_moved" ] || message="$message Role tiers set in sdkit.env:$_moved. Spawn those roles with the Agent tool's model parameter set to that model; the Agent hook refuses another one."
+fi
 jq -n --arg m "$message" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$m}}'

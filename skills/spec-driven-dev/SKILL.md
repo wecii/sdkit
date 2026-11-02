@@ -57,7 +57,7 @@ Read `references/plan-gate.md` and run it. In short: for `medium`/`high` the `en
 
 ## 3. Propose (Definition of Done verified by tests)
 
-Invoke `openspec-propose` with `plan.md` as input to produce `proposal.md` / `design.md` / `specs/` / `tasks.md`. Then require in `proposal.md` a **Definition of Done**: one line per acceptance criterion in the form `D<n>: <testable condition> | Verified by: <unit test|integration test|manual check|none: reason>`. Tasks carry `role:` / `writes:` / `after:` and optionally `size:` (`references/parallel.md`).
+Invoke `openspec-propose` with `plan.md` as input to produce `proposal.md` / `design.md` / `specs/` / `tasks.md`. Then require in `proposal.md` a **Definition of Done**: one line per acceptance criterion in the form `D<n>: <testable condition> | Verified by: <unit test|integration test|manual check|none: reason>`. Tasks carry `role:` / `writes:` / `after:` and `size:` (`references/parallel.md`). With `ROUTING=on` (check `<project-dir>/sdkit.env`) read `references/model-routing.md` now and give **every delegated task** a `size:`: `<sdd> advance proposed` refuses a tasks.md with a `role:` task that has none.
 
 `high`: `design.md` must contain the **race/ordering/timing scenario**; if it is missing write it now or stop and ask.
 

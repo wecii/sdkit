@@ -332,6 +332,7 @@ rerr="$(registry_errors "$REG" | head -3 | paste -sd';' -)"; [ -z "$rerr" ] || s
 base="${role%-deep}"; rsrc="$(role_src "$role")" || stop UNKNOWN_ROLE "no role text for '$base'"
 rtier="$(fm "$rsrc" tier)"; [ -n "$rtier" ] || rtier=standard; access="$(fm "$rsrc" access)"
 [ "$role" != "$base" ] && { d="$(fm "$rsrc" deep)"; [ -n "$d" ] && rtier="$d"; }
+rtier="$(sdkit_role_tier "$role" "$rtier")"   # AGENT_<ROLE>_TIER in sdkit.env
 case "$base" in verifier|reviewer|security-auditor) D_CLASS=gate ;; scout|analyst) D_CLASS=lookup ;; *) D_CLASS=work ;; esac
 
 # --- task facts: risk, profile and mandatory-ness come from the workflow policy (workflow.sh), never restated here

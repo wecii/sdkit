@@ -51,6 +51,7 @@ tests/slow/risk-floor.test.sh                                            # risk 
 tests/hardening.test.sh                                            # F00.5: verdict validation, concurrent writes, settings files not executed, task resolution, cache, STACK
 tests/slow/workflow.test.sh                                             # F03: profiles, transition table, refusal reasons, contract policy, concurrency, telemetry
 tests/slow/report.test.sh                                               # Value Report: task/session report, savings arithmetic, double counting, one-shot generation, no LLM call
+tests/roletier.test.sh                                           # AGENT_<ROLE>_TIER (helper, route.sh, run-role.sh, Agent hook, session start, doctor) and the task-size gate
 tests/pricing.test.sh                                             # price table: refresh from the Bedrock list, status, init and doctor
 tests/usage.test.sh                                               # F07: usage/cost accounting, price resolution, deduplication, coverage warnings
 tests/efficiency.test.sh                                           # F08: verdict normalisation, format/semantic split, PASS without evidence, early DoD check

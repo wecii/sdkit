@@ -79,6 +79,16 @@ if [ -f "$env_file" ]; then
   [ "${VALUE_REPORT:-}" = on ] || miss="$miss VALUE_REPORT=on"; [ "${ROUTING:-}" = on ] || miss="$miss ROUTING=on"
   [ -z "$miss" ] && ok "measurement on (USAGE_LOG, TELEMETRY, VALUE_REPORT, ROUTING)" \
     || warn "measurement off, so the Value Report has gaps (tokens, phases, routing):$miss (USAGE_LOG, TELEMETRY, VALUE_REPORT in sdkit.local.env; ROUTING in sdkit.env)"
+  # role tiers (AGENT_<ROLE>_TIER): a typo is silent otherwise, the role simply keeps its own tier
+  for _k in $(compgen -v | grep -E '^AGENT_[A-Z0-9_]+_TIER$'); do
+    _r="$(printf '%s' "${_k#AGENT_}" | sed 's/_TIER$//' | tr 'A-Z_' 'a-z-')"; _v="${!_k:-}"; _f=""
+    for _c in "$SCAFFOLD_ROOT/core/roles/$_r.md" "$TARGET/$KIT_DIR/roles/$_r.md"; do [ -f "$_c" ] && { _f="$_c"; break; }; done
+    if [ -z "$_f" ]; then warn "$_k: there is no role '$_r' (roles: $(ls "$SCAFFOLD_ROOT"/core/roles/*.md | xargs -n1 basename | sed 's/\.md$//' | grep -v '^README$' | tr '\n' ' '))"; continue; fi
+    [ -n "$_v" ] || continue
+    case "$_v" in light|standard|strong) ;; *) warn "$_k=$_v is not a tier (light | standard | strong): the role keeps its own tier"; continue ;; esac
+    _own="$(sdkit_fm "$_f" tier)"
+    case "$_r" in verifier|reviewer|security-auditor) [ "$(sdkit_tier_rank "$_v")" -ge "$(sdkit_tier_rank "$_own")" ] || warn "$_k=$_v is below the role's own tier ($_own): independent roles are never moved down, the value is ignored" ;; esac
+  done
   # price table and routing baseline
   pscript="$TARGET/$KIT_DIR/scripts/pricing.sh"; [ -x "$pscript" ] || pscript="$SCAFFOLD_ROOT/scripts/pricing.sh"
   if [ "$UPDATE_PRICING" = 1 ]; then

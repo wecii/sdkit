@@ -8,6 +8,23 @@
 _role="$(jget .tool_input.subagent_type)"
 case "${_role##*:}" in verifier|verifier-deep|reviewer|security-auditor)
   [ -f "$PROJECT_DIR/$KIT_DIR/.sdd/state.json" ] && "$PLUGIN_ROOT/scripts/sdd.sh" _spawn "$_role" --source hook >/dev/null 2>&1 ;; esac
+# AGENT_<ROLE>_TIER (sdkit.env): a kit role that the project moved to another tier than its agent file's must be spawned with the model of that tier.
+# The orchestrator is told at session start; this is what makes it stick when it forgets. SDD_MODE: strict refuses, guided only warns, off does nothing.
+_b="${_role##*:}"
+if [ -n "$_b" ] && [ "${_b%-deep}" = "$_b" ] && type sdkit_role_tier >/dev/null 2>&1; then
+  _rf=""; for _c in "$PROJECT_DIR/$KIT_DIR/roles/$_b.md" "$PLUGIN_ROOT/core/roles/$_b.md"; do [ -f "$_c" ] && { _rf="$_c"; break; }; done
+  if [ -n "$_rf" ]; then
+    _own="$(sdkit_fm "$_rf" tier)"; _own="${_own:-standard}"; _eff="$(sdkit_role_tier "$_b" "$_own")"
+    if [ "$_eff" != "$_own" ]; then
+      _want="$(sdkit_tier_model "$_eff" "$PROJECT_DIR")"; _got="$(jget .tool_input.model)"
+      case "$_got" in *haiku*) _gt=light ;; *sonnet*) _gt=standard ;; *opus*) _gt=strong ;; *) _gt="" ;; esac
+      if [ -n "$_want" ] && [ "$_gt" != "$_eff" ]; then
+        _m="AGENT_$(printf '%s' "$_b" | tr 'a-z-' 'A-Z_')_TIER=$_eff in sdkit.env: spawn $_b with model \"$_want\" ($_eff tier)${_got:+, not \"$_got\"}."
+        case "$("$PLUGIN_ROOT/scripts/sdd.sh" mode 2>/dev/null)" in off) ;; guided) jq -n --arg m "$_m" '{systemMessage:$m}' ;; *) decide deny "$_m" ;; esac
+      fi
+    fi
+  fi
+fi
 # F06 (ROUTING=on only): ask the routing policy about a kit role before it starts: valid evidence to reuse, a BLOCK that stands, a duplicate, a model below the
 # risk floor. A preview (no record, no model call); anything it cannot answer lets the spawn through, the other gates are unchanged.
 if [ "${ROUTING:-off}" = on ] && [ -x "$PLUGIN_ROOT/scripts/route.sh" ] && [ -f "$PROJECT_DIR/$KIT_DIR/roles/${_role##*:}.md" -o -f "$PLUGIN_ROOT/core/roles/${_role##*:}.md" ]; then

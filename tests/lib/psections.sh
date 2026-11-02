@@ -61,6 +61,8 @@ def defs(chunk, toplevel=False):
         for m in forl.finditer(l):
             s.update(x for x in m.groups() if x)
     return s
+def fnames(chunk):
+    return set(m.group(1) for l in code_lines(chunk) for m in [fn.match(l)] if m)
 def uses(chunk, names):
     text = '\n'.join(chunk); u = set(m.group(1) for m in use.finditer(text))
     for n in names:   # a function name used as a word
@@ -68,7 +70,7 @@ def uses(chunk, names):
     return u
 P = defs(pre, True)
 D = [defs(s) for s in secs]
-allnames = set().union(*D) if D else set()
+allnames = set().union(*[fnames(x) for x in secs]) if secs else set()
 parent = list(range(len(secs)))
 def find(x):
     while parent[x] != x: parent[x] = parent[parent[x]]; x = parent[x]

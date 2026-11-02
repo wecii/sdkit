@@ -79,6 +79,7 @@ sdkit report task|session|latest|history [--detailed|--json|--markdown]   # Valu
 <kit>/scripts/memory.sh candidates <slug>       # memory candidates at closeout (MEMORY=1); search | stale | add | promote
 <kit>/scripts/lookup-cache.sh get <slug> "question" # scout answer cache; 1 on a miss
 <kit>/scripts/run-role.sh verifier --handoff F --cwd D --host H   # run the role in a separate process; another provider with VERIFIER_HOST
+AGENT_<ROLE>_TIER=light|standard|strong       # sdkit.env: the tier (and so the model) a role runs at; the roles are listed there with their own tier
 <kit>/scripts/route.sh explain --role R [--risk L]   # routing decision (ROUTING=on): adapter, model, reason, budget; no model call, no record
 <kit>/scripts/route.sh registry | capabilities | validate   # model registry | adapter capabilities | settings check
 <kit>/scripts/check-plan-parity.sh plan.md proposal.md [tasks.md]  # DoD lines: D<n>: text | Verified by: type

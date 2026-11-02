@@ -11,7 +11,7 @@ Use parallel only if all hold: risk is `medium` or `high`, at least two tasks ha
 - [ ] T3 Add retry to the importer | role: developer | size: medium | writes: services/importer/ | after: T1
 ```
 - `role:` one of `developer`, `test-writer`, `devsecops`, `engineer`.
-- `size:` optional, `small|medium|large`: picks the model tier for the task (`model-routing.md`). `plan-waves.sh` shows it and otherwise ignores it.
+- `size:` `small|medium|large`: picks the model tier for the task (`model-routing.md`). Optional with `ROUTING=off`; with `ROUTING=on` (tiered) `sdd.sh advance proposed` refuses a task that names a `role:` and has no `size:`. `plan-waves.sh` shows it and otherwise ignores it.
 - `writes:` comma-separated paths or directories the task may change. Anything not listed is read-only for that task.
 - `after:` task ids that must be merged first (omit if none).
 

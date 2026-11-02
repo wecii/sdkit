@@ -85,6 +85,7 @@ fm() { awk -v k="$1" 'BEGIN{f=0} /^---$/{f++; next} f==1 && index($0,k":")==1 {s
 tier="$(fm tier)"; access="$(fm access)"
 [ "$role" != "$base" ] && tier="$(fm deep)"
 [ -n "$tier" ] || tier=standard
+tier="$(sdkit_role_tier "$role" "$tier")"   # AGENT_<ROLE>_TIER in sdkit.env
 ro=1; [ "$access" = read-only ] || ro=0
 
 rank() { case "$1" in light) echo 1 ;; standard) echo 2 ;; strong) echo 3 ;; esac; }

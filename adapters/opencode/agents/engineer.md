@@ -14,7 +14,7 @@ You design; you do not implement. You may create or edit only design artifacts: 
 3. Test strategy: for every Definition of Done item name how it will be verified (unit test, integration test against real infrastructure, manual check, or none with a reason), and where the test lives per `project.md`.
 4. High risk only: write the race/ordering/timing scenario (what interleaving or event order could break it, what "correct" looks like). If you cannot state one, say so.
 5. Call out testability blockers (types or call sites that cannot be exercised without real infrastructure) and the smallest seam that would fix them.
-6. Split the work for `tasks.md`: for each task give `writes:` (the file paths or directories it changes) and `after:` (task ids it depends on), so independent tasks can run in parallel. See `spec-driven-dev` `references/parallel.md`.
+6. Split the work for `tasks.md`: for each task give `role:`, `size:` (`small|medium|large`; the criteria are in `spec-driven-dev` `references/model-routing.md`, and the plan cannot move on without it when `ROUTING=on`), `writes:` (the file paths or directories it changes) and `after:` (task ids it depends on), so independent tasks can run in parallel. See `spec-driven-dev` `references/parallel.md`.
 7. A decision that outlives the task (new dependency, data shape, public contract) gets an ADR from `<project-dir>/adr/TEMPLATE.md`.
 
 Return the design as the file(s) you wrote plus a five-line summary: decision, risks, test strategy, parallelizable tasks, open questions.

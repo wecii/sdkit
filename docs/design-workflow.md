@@ -52,7 +52,7 @@ any > (aborted)    sdd.sh abort; the only way back, and it ends the task
 ```
 No extra condition **was added** to the `pr` entry (it was tried): existing tests drove flows that drop an untracked file into the repo after `verified` through to `pr`; the push gate (`gate push`) already checks that the diff is the verified diff before a PR is opened. Backward compatibility was put ahead of this extra check.
 
-Refused move: the state **does not change**, the reason is written to stderr, and a `reason` lands in the `phase.reject` event. Reasons: `not-next unknown-phase no-artifact no-dod no-design tests-pass tests-fail verify-failed no-verdict verdict-block stale-verdict risk-floor agents-pending out-of-phase concurrent` (category: `tests` only for a refusal that comes from the test run, `gate` for the rest). `phase.reject` carries only fixed words: no handoff text, test output or path list is written.
+Refused move: the state **does not change**, the reason is written to stderr, and a `reason` lands in the `phase.reject` event. Reasons: `not-next unknown-phase no-artifact no-dod no-task-size no-design tests-pass tests-fail verify-failed no-verdict verdict-block stale-verdict risk-floor agents-pending out-of-phase concurrent` (category: `tests` only for a refusal that comes from the test run, `gate` for the rest). `phase.reject` carries only fixed words: no handoff text, test output or path list is written.
 
 ## 4. Contract policy (integration with F02)
 

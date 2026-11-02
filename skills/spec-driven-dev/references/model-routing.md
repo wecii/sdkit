@@ -14,7 +14,10 @@ a one-file rename and a new locking scheme should not run on the same model.
 | `medium` | `standard` | new logic inside a known design: a handler, a query, a table-driven test set; a few files in one area |
 | `large` | `strong` | needs judgement: a design decision, a race/ordering or concurrency problem, a security-sensitive path, a cross-module change |
 
-No `size:` means no override: the role's own tier from `core/roles/` applies (the behaviour before this field existed).
+No `size:` means no override: the role's own tier applies (`AGENT_<ROLE>_TIER` in `sdkit.env`, else `core/roles/`), the behaviour before this field existed. With `ROUTING=on` and `ROUTE_POLICY=tiered` the size is required: `sdd.sh advance proposed` refuses a `tasks.md` line that names a `role:` and has no `size:` (`ROUTE_REQUIRE_SIZE=0` opts out).
+
+## Role tiers
+A role's own tier is `AGENT_<ROLE>_TIER` in `<project-dir>/sdkit.env` (`AGENT_ENGINEER_TIER=standard`; the file lists every role with its default). On Claude Code a role whose tier differs from the one in its agent file must be spawned with the `model` of that tier: the session start tells you which, and the `Agent` hook refuses a spawn with another model. `run-role.sh` and `route.sh` apply it themselves. The independent roles can go up, never below their own tier.
 
 ## How to size
 Take the highest size any of these points to:

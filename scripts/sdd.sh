@@ -116,6 +116,11 @@ fingerprint() (
   done < "$list" | sdkit_sha256 || { echo "sdd: cannot hash the diff (needs shasum, sha256sum or openssl)" >&2; exit 1; }
 )
 
+# ROUTING=on (tiered) picks the model per task from `size:`. A delegated task (a task line with `role:`) without one would silently run on its role's own tier,
+# and that is exactly what an orchestrator that skipped references/model-routing.md does, so `advance proposed` refuses it. ROUTE_REQUIRE_SIZE=0 opts out.
+missing_sizes() {  # <tasks.md>: the ids of task lines that name a role but carry no size:
+  awk '/^[[:space:]]*-[[:space:]]*\[[ xX]\]/ && /role:/ && !/size:/ { sub(/^[[:space:]]*-[[:space:]]*\[[ xX]\][[:space:]]*/, ""); split($0, a, " "); printf "%s ", a[1] }' "$1" 2>/dev/null
+}
 has_dod() {  # a "Definition of Done" heading followed by at least one list item
   awk '{l=tolower($0)} l ~ /^#+[ \t]+.*definition of done/{on=1; next} on && /^#+[ \t]/{exit} on && /^[ \t]*([-*]|[0-9]+\.)[ \t]+[^ \t]/{found=1} END{exit !found}' "$1"
 }
@@ -203,6 +208,10 @@ cmd_advance() {
     proposed)
       local proposal="$PROJECT_DIR/$(get .proposal)"
       [ -f "$proposal" ] || reject no-artifact "proposal not found: $(get .proposal)"
+      if [ "${ROUTING:-off}" = on ] && [ "${ROUTE_POLICY:-tiered}" = tiered ] && [ "${ROUTE_REQUIRE_SIZE:-1}" != 0 ] && [ -f "$(dirname "$proposal")/tasks.md" ]; then
+        local nosize; nosize="$(missing_sizes "$(dirname "$proposal")/tasks.md")"
+        [ -z "$nosize" ] || reject no-task-size "$(dirname "$(get .proposal)")/tasks.md: ${nosize}have no size:. ROUTING=on routes the model by task size. Read references/model-routing.md, give every delegated task size: small|medium|large, and run this again (ROUTE_REQUIRE_SIZE=0 in sdkit.env gives up per-task routing)."
+      fi
       has_dod "$proposal" || reject no-dod "$(get .proposal) has no 'Definition of Done' section with at least one list item. Each acceptance criterion needs a testable line."
       if [ "$risk" = high ]; then
         local design; design="$(dirname "$proposal")/design.md"

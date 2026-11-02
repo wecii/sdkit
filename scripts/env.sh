@@ -213,3 +213,31 @@ sdkit_relpath() {
   [ -d "$root" ] && root="$(cd "$root" 2>/dev/null && pwd -P)"
   case "$p" in "$root") printf '\n' ;; "$root"/*) printf '%s\n' "${p#"$root"/}" ;; *) printf '%s\n' "$p" ;; esac
 }
+
+# --- role tiers ------------------------------------------------------------------------------------------------------------------------------
+# A role declares a tier (core/roles/<role>.md: light | standard | strong), never a model. A project can move a role to another tier with
+# AGENT_<ROLE>_TIER in sdkit.env (ROLE upper case, `-` as `_`: AGENT_ENGINEER_TIER=standard, AGENT_SECURITY_AUDITOR_TIER=strong). Empty or absent = the
+# role's own tier. sdkit.env lists every role with its own tier, so the default is visible and one value is all you change.
+# sdkit_tier_rank <tier>      1 light, 2 standard, 3 strong, 0 anything else
+# sdkit_fm <file> <key>       one front-matter value of a role file
+# sdkit_role_tier <role> <own tier>   the tier the role runs at. The independent roles (verifier, reviewer, security-auditor) are never moved BELOW their own
+#                             tier (they may go up): an AGENT_*_TIER under it is ignored (`sdkit doctor` says so). verifier-deep keeps its deep tier.
+# sdkit_tier_model <tier> [root]      the Claude Code model alias of a tier (CLAUDE_MODEL_<TIER> in core/tiers.env, else the project's tiers.env)
+_sdkit_env_dir="${BASH_SOURCE[0]%/*}"
+sdkit_tier_rank() { case "$1" in light) echo 1 ;; standard) echo 2 ;; strong) echo 3 ;; *) echo 0 ;; esac; }
+sdkit_fm() { awk -v k="$2" 'BEGIN{f=0} /^---$/{f++; next} f==1 && index($0,k":")==1 {sub("^"k":[ ]*",""); print; exit}' "$1" 2>/dev/null; }
+sdkit_role_tier() {
+  local role="${1%-deep}" own="$2" key v
+  [ "$1" = "$role" ] || { printf '%s\n' "$own"; return 0; }
+  key="AGENT_$(printf '%s' "$role" | tr 'a-z-' 'A-Z_')_TIER"; v="${!key:-}"
+  [ "$(sdkit_tier_rank "$v")" -gt 0 ] || { printf '%s\n' "$own"; return 0; }
+  case "$role" in verifier|reviewer|security-auditor) [ "$(sdkit_tier_rank "$v")" -ge "$(sdkit_tier_rank "$own")" ] || v="$own" ;; esac
+  printf '%s\n' "$v"
+}
+sdkit_tier_model() {
+  local up f
+  case "$1" in light) up=LIGHT ;; standard) up=STANDARD ;; strong) up=STRONG ;; *) return 0 ;; esac
+  for f in "$_sdkit_env_dir/../core/tiers.env" "${2:+$2/${KIT_DIR:-.sdkit}/tiers.env}"; do
+    [ -n "$f" ] && [ -f "$f" ] && { sed -n "s/^CLAUDE_MODEL_$up=//p" "$f" | tail -1; return 0; }
+  done
+}

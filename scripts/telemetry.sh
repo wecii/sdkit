@@ -42,7 +42,7 @@ work="$top/$KIT_DIR/work"
 SCHEMA='
 def types: ["task.start","task.end","phase.enter","phase.reject","agent.start","agent.end","retry","test.result","verify.result","failure","bench.mark","contract.check","workflow.decision"];
 def cats: ["budget","gate","tests","verdict-block","verdict-malformed","host-error","host-missing","timeout","contract","other"];
-def reasons: ["no-result","malformed","unsupported-version","missing-field","bad-value","inconsistent","id-mismatch","role-mismatch","task-mismatch","unknown-id","duplicate","stale","unsafe-path","missing-artifact","out-of-scope","not-next","unknown-phase","no-artifact","no-dod","no-design","tests-pass","tests-fail","verify-failed","no-verdict","verdict-block","stale-verdict","risk-floor","profile-risk","agents-pending","retry-exhausted","out-of-phase","concurrent","no-evidence","evidence-block","stale-evidence","untrusted-evidence","role-conflict"];
+def reasons: ["no-result","malformed","unsupported-version","missing-field","bad-value","inconsistent","id-mismatch","role-mismatch","task-mismatch","unknown-id","duplicate","stale","unsafe-path","missing-artifact","out-of-scope","not-next","unknown-phase","no-artifact","no-dod","no-design","tests-pass","tests-fail","verify-failed","no-verdict","verdict-block","stale-verdict","risk-floor","profile-risk","agents-pending","retry-exhausted","out-of-phase","concurrent","no-evidence","evidence-block","stale-evidence","untrusted-evidence","role-conflict","no-task-size"];
 def profiles: ["small","standard","high-assurance"];
 def stages: ["handoff","result"];
 def execs: ["done","partial","blocked","failed"];
