@@ -26,7 +26,7 @@ report "tree: machine paths / names / identities" soft "$(tree "$SOFT" | grep -v
 
 if [ "$HISTORY" = 1 ]; then
   added="$(git log --all -p --no-color -U0 | grep -E -e '^\+' | grep -vE -e '^\+\+\+')"
-  report "history: secret-shaped strings" hard "$(printf '%s\n' "$added" | grep -E -e "$SECRET")"
+  report "history: secret-shaped strings" hard "$(printf '%s\n' "$added" | grep -E -e "$SECRET" | grep -vE -f <(allow))"
   report "history: credentials in URLs" hard "$(printf '%s\n' "$added" | grep -E -e "$URLCRED" | grep -vE -f <(allow))"
   report "history: author identities (cannot be removed without rewriting history)" soft "$(git log --all --format='%an <%ae>' | sort | uniq -c)"
 fi

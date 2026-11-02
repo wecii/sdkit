@@ -6,3 +6,5 @@ dummy-pw
 "name": "wecii"
 # an earlier commit used a placeholder password against example.org in a test
 user:secret@example\.org
+# the redaction test (tests/security.test.sh) feeds the redactor made-up keys and checks they are masked; none of them is a credential
+eq "(aws key id|github token|sk- api key|private key block)"
