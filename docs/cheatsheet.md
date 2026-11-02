@@ -44,7 +44,7 @@ Roles do not call each other; if a lookup is needed they write `NEEDS-LOOKUP:` a
 | | Options |
 |---|---|
 | Host (`init.sh --host a,b`) | `claude` (default), `codex`, `opencode`, `cursor`, `gemini`. The project dir is `.sdkit/` for every host (`.claude`/`.codex`/`.agentkit` in old installs); settings: shared `sdkit.env` + personal `sdkit.local.env` |
-| Stack (`--stack`, otherwise automatic) | `go`, `spring-boot`, `nextjs`, `react-native` (this is the detection order; one stack per repo) |
+| Stack (`--stack`, otherwise automatic) | `go`, `spring-boot`, `react-native`, `jvm`, `nextjs`, `python`, `generic` fallback (this is the detection order; one stack per repo) |
 
 On non-Claude hosts the guards run at commit/push time (`.githooks`), and also on tool calls if the host supports it; the adapters were not validated on a live install ([guide.md](guide.md) §13, §16).
 

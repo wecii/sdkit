@@ -5,6 +5,9 @@ STACK_SOURCE_RE='\.(tsx?|jsx?)$'
 for _n in "$ENGINE_DIR/node-lib.sh" "$ENGINE_DIR/../../_node/scripts/node-lib.sh"; do [ -f "$_n" ] && { . "$_n"; break; }; done
 type node_check >/dev/null 2>&1 || { echo "node-lib.sh not found next to $0 or in stacks/_node/scripts/" >&2; exit 1; }
 
+# node_exec_found <dir> <bin>: a locally installed binary exists (node_exec runs only those)
+node_exec_found() { [ -x "$1/node_modules/.bin/$2" ] || [ -x "$ROOT/node_modules/.bin/$2" ]; }
+
 stack_run() {
   local f pkg PKGS files rel native
 
@@ -27,8 +30,14 @@ stack_run() {
     done
 
     step "package $pkg: lint"
-    # shellcheck disable=SC2086
-    node_check "$pkg" lint lint eslint $files
+    if ! node_has_script "$pkg" lint && ! node_exec_found "$pkg" eslint && node_exec_found "$pkg" prettier; then
+      # no eslint: the formatting check is the only style gate there is
+      # shellcheck disable=SC2086
+      node_exec "$pkg" prettier --check $files || fail "prettier --check: $pkg (run prettier --write)"
+    else
+      # shellcheck disable=SC2086
+      node_check "$pkg" lint lint eslint $files
+    fi
 
     step "package $pkg: test"
     if [ ! -d "$pkg/node_modules" ] && [ ! -d "$ROOT/node_modules" ]; then

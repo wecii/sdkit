@@ -10,11 +10,14 @@ stacks/<stack>/
   scripts/steps.sh       STACK_SOURCE_RE and stack_run (the stack's checks); see scripts/verify-core.sh
   scripts/fmt.sh         format one file ($1); always exit 0 (used by the post-edit hook; no-op if the tool is missing)
   scripts/tools.sh       tools the stack needs, one per line:  required|<command>|<install hint>   or   optional|<command>|<hint>
+                         ($1 = the repo root, passed by doctor and the check-tools hook; a stack may ignore it)
   scripts/verify-lib.sh  (go only today) helpers for verify.d policies; shared by all stacks via scripts/verify-lib.sh when absent
   permissions.txt        Claude Code permission patterns (one per line) added to settings.json "allow" for this stack
   rules/*.md             default conventions copied into <project-dir>/rules/ (project-owned afterwards)
   verify.d.example/*.example   example project policies (FAIL:/WARN: protocol, see verify-lib.sh)
   <config files>         e.g. golangci.yml, copied to <project-dir>/
+  known-pitfalls.md      optional seed for <project-dir>/known-pitfalls.md (stack-specific bug classes); init uses
+                         templates/known-pitfalls.md (header and format, no entries) when absent
 ```
 
 ## stack_run contract (steps.sh)

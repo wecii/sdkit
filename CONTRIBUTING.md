@@ -115,8 +115,8 @@ A guard is not trusted until it has been seen to "fail and then pass": try both 
 
 ## Adding a new stack
 
-1. The `stacks/<name>/` contract is in [stacks/README.md](stacks/README.md): `detect.sh`, `scripts/verify.sh` (thin entry point), `scripts/steps.sh` (`STACK_SOURCE_RE`, `stack_run`), `scripts/fmt.sh`, `scripts/tools.sh`, `permissions.txt`, `rules/`, `verify.d.example/`.
-2. The detection order in `bin/init.sh` (`STACKS` variable: go, spring-boot, react-native, nextjs; first match wins): `detect.sh` must not give false positives.
+1. The `stacks/<name>/` contract is in [stacks/README.md](stacks/README.md): `detect.sh`, `scripts/verify.sh` (thin entry point), `scripts/steps.sh` (`STACK_SOURCE_RE`, `stack_run`), `scripts/fmt.sh`, `scripts/tools.sh`, `permissions.txt`, `rules/`, `verify.d.example/`, optional `known-pitfalls.md` (seed for the project file).
+2. The detection order in `bin/init.sh` (`STACKS` variable: go, spring-boot, react-native, jvm, nextjs, python; first match wins): `detect.sh` must not give false positives.
 3. `hooks/check-tools.sh` reads the `required|` / `optional|` lines in `scripts/tools.sh`; a missing tool is a `warn`, not a `fail`.
 4. `permissions.txt`: patterns to add to the Claude `settings.json` "allow" list (their narrowest form).
 5. Shared logic stays in `scripts/verify-core.sh`; a stack only writes `stack_run`. Node-based stacks share `stacks/_node/scripts/node-lib.sh`.

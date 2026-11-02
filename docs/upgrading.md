@@ -152,6 +152,41 @@ Nothing changes until you opt in. `ROUTING=off` stays the default, so `run-role.
 - **Exit codes of `run-role.sh` with `ROUTING=on`:** 7 = valid evidence already exists (nothing to run, do not retry), 8 = routing declined to run and there is no valid result (never a pass). Scripts that call `run-role.sh` must handle both.
 - **Turning it on:** set `RUN_ROLE_HOST` (and `VERIFIER_HOST` for independent roles), then `ROUTING=on`; look at a decision first with `route.sh explain --role <role>`. Details and limits: [design-routing.md](design-routing.md).
 
+## 1.3.2: measurement on by default, a price table, task-scoped token counts
+
+- **New setups measure:** `TELEMETRY=1` (`sdkit.local.env`) and `ROUTING=on` (`sdkit.env`) are now the template defaults next to `USAGE_LOG=1` and `VALUE_REPORT=on`. `sdkit upgrade` still only appends settings that are missing and never rewrites your values, with **one exception, once**: an upgrade from a kit older than 1.3.2 changes exactly the old defaults, `TELEMETRY=` (empty) to `TELEMETRY=1` and `ROUTING=off` to `ROUTING=on`, and prints what it set. Any other value (`shadow`, `0`, ...) is left alone, and once the project is at 1.3.2 a later `off` is never touched again. To keep one off, set it back after that upgrade; `sdkit doctor` warns while one is off.
+- **`pricing.json`:** `sdkit init` / `sdkit upgrade` copy a starting table (public AWS Bedrock list, global inference) when the project has none; an existing file is never touched. `sdkit doctor` reports a missing or stale table and an unset or unknown `REPORT_BASELINE_MODEL`; `sdkit doctor --update-pricing` refreshes a table the kit wrote. Set `REPORT_BASELINE_MODEL=<an id in pricing.json>` in `sdkit.env` to get routing savings.
+- **Value Report accuracy:** the orchestrator's tokens are counted from the start of the open task (before, a session that served several tasks was charged to each task in full, and the same session appeared in several tasks' totals). Ledger lines written by older versions are not rewritten. Unmeasured subagent runs are filled in from their transcript when a report is built; the role of a subagent is read from its `.meta.json` when the hook payload has none. An open task shows its quality gate as `Pending`; long texts are cut at a word boundary.
+
+## 1.3.2 (React Native): skill recommendations
+
+No manual step. On `react-native` repos `init` now recommends the Expo, Vercel and Callstack skill sets (installed by you, never vendored), and `doctor` warns when `.agents/skills` or `.claude/skills` still holds `building-native-ui` or `expo-tailwind-setup`, which upstream removed. See [guide.md](guide.md), section Stacks.
+
+## 1.3.2 (React Native): Expo checks
+
+Only `react-native` repos are affected; nothing new runs until you enable it.
+
+- **New `verify.d` example** `40-expo.sh.example`: `expo install --check` when a `package.json` changes (FAIL on SDK-misaligned versions, WARN when it cannot run), a prebuild reminder when `app.json` / `app.config.*` plugins or `ios` / `android` settings change, and a WARN on NativeWind transform/shadow/transition/ring classes inside a conditional `className`. To use it: `cp "$(sdkit where)/stacks/react-native/verify.d.example/40-expo.sh.example" .sdkit/verify.d/40-expo.sh && chmod +x .sdkit/verify.d/40-expo.sh`.
+- **Lint without eslint:** if a package has no `lint` script and no local eslint but a local prettier, verify runs `prettier --check` on the changed files instead of skipping lint. A formatting difference is a failure; `prettier --write` fixes it.
+- **Tools:** `doctor` and the `check-tools` hook show `xcrun` (macOS) / `adb` hints, as warnings only, when `ios/` / `android/` exist. `tools.sh` and `steps.sh` are managed copies: `sdkit upgrade` refreshes them (plugin mode uses the updated plugin).
+
+## 1.3.2 (React Native): Expo rules and pitfalls
+
+Only `react-native` repos are affected. Rules and `known-pitfalls.md` are project-owned, so `sdkit upgrade` does not add or change them in an existing repo.
+
+- **New rule file** `stacks/react-native/rules/expo-idioms.md` (Expo Router headers, form sheets, edge-to-edge Android, Hermes `Intl`, NativeWind, `expo-image`, prebuild). To take it: `cp "$(sdkit where)/stacks/react-native/rules/expo-idioms.md" .sdkit/rules/`.
+- **`rn-idioms.md` changed:** styling no longer assumes `StyleSheet.create` (utility classes such as NativeWind keep static `className` strings and put only dynamic values in `style`), Expo uses `process.env.EXPO_OS` for platform branches, and there are new styling, animation and screen-state rules. Compare with `diff .sdkit/rules/rn-idioms.md "$(sdkit where)/stacks/react-native/rules/rn-idioms.md"` and merge what you want.
+- **Pitfalls seed:** new repos get `stacks/react-native/known-pitfalls.md` (FlashList v2 pagination, FlatList offsets, Android ScrollView offset, Yoga alignment, `setTimeout` navigation). Copy the entries you want into your own `.sdkit/known-pitfalls.md`.
+- **`verify.d` example `10-forbidden-patterns`:** the inline-style warning fires only on a `style={{ }}` inside a list's `renderItem`. If you enabled the policy, copy the new version over yours.
+
+## 1.3.2 (React Native): fewer false failures on Expo setups
+
+No manual step is required.
+
+- **Stack detection:** an Expo app with a prebuilt `android/` is now detected as `react-native`. If an earlier `init` gave such a repo another stack, set `STACK=react-native` in `sdkit.env`.
+- **`known-pitfalls.md`:** the template no longer ships a Go entry; Go repos get it from `stacks/go/known-pitfalls.md`. An existing file is yours and is not touched: delete the `typed-nil interface` entry if your repo is not Go.
+- **`doctor`:** third-party skills in `.agents/skills/` no longer trigger the non-Claude host checks, a tool installed in `node_modules/.bin` counts as installed, and the `project.md` check ignores the template's explanatory `` `TODO` `` line.
+
 ## 1.3.0: usage and cost accounting, Value Report, F08-F20 scripts, GitHub/GitLab PR hosts
 
 Nothing changes until you opt in; every new setting is off or empty by default.
@@ -162,9 +197,3 @@ Nothing changes until you opt in; every new setting is off or empty by default.
 - **`parse-verdict.sh`** now distinguishes `MALFORMED[format]` (asked again once) from `MALFORMED[semantic]`; a hand-written parser of its messages should look for both.
 - **Docs are English** from this version on (`docs/`, `CONTRIBUTING.md`).
 - **CI gates:** `init --ci` now writes templates that run the base branch's own gate, and `init --ci gitlab` installs a GitLab merge-request gate. Re-run `sdkit init --ci <host>` only if you want the new template; existing CI files are not overwritten.
-
-## 1.3.2: measurement on by default, a price table, task-scoped token counts
-
-- **New setups measure:** `TELEMETRY=1` (`sdkit.local.env`) and `ROUTING=on` (`sdkit.env`) are now the template defaults next to `USAGE_LOG=1` and `VALUE_REPORT=on`. `sdkit upgrade` still only appends settings that are missing and never rewrites your values, with **one exception, once**: an upgrade from a kit older than 1.3.2 changes exactly the old defaults, `TELEMETRY=` (empty) to `TELEMETRY=1` and `ROUTING=off` to `ROUTING=on`, and prints what it set. Any other value (`shadow`, `0`, ...) is left alone, and once the project is at 1.3.2 a later `off` is never touched again. To keep one off, set it back after that upgrade; `sdkit doctor` warns while one is off.
-- **`pricing.json`:** `sdkit init` / `sdkit upgrade` copy a starting table (public AWS Bedrock list, global inference) when the project has none; an existing file is never touched. `sdkit doctor` reports a missing or stale table and an unset or unknown `REPORT_BASELINE_MODEL`; `sdkit doctor --update-pricing` refreshes a table the kit wrote. Set `REPORT_BASELINE_MODEL=<an id in pricing.json>` in `sdkit.env` to get routing savings.
-- **Value Report accuracy:** the orchestrator's tokens are counted from the start of the open task (before, a session that served several tasks was charged to each task in full, and the same session appeared in several tasks' totals). Ledger lines written by older versions are not rewritten. Unmeasured subagent runs are filled in from their transcript when a report is built; the role of a subagent is read from its `.meta.json` when the hook payload has none. An open task shows its quality gate as `Pending`; long texts are cut at a word boundary.

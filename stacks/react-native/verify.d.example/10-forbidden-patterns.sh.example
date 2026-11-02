@@ -11,8 +11,21 @@ echo "$added" | grep -nE 'console\.log|(^|[^A-Za-z_])debugger[;[:space:]]*$' && 
 added_lines "${src[@]}" "${nontest[@]}" | grep -E 'TODO([^(]|$)' && echo "FAIL: TODO without reference, use TODO(TASK-123)"
 added_lines "${src[@]}" | grep -nE ':[[:space:]]*any\b|\bas any\b' && echo "WARN: ': any' / 'as any' added (prefer a real type or unknown)"
 
+# a new style object per render costs only in list rows: warn on style={{ inside a renderItem, not elsewhere
+# (a static className plus style={{ }} for dynamic values is the NativeWind pattern and stays quiet)
 for f in $VERIFY_CHANGED_SRC; do
   [ -f "$f" ] || continue
-  grep -q 'FlatList\|FlashList' "$f" && grep -q 'style={{' "$f" && echo "WARN: $f has inline style={{ }} next to a list (hoist to StyleSheet.create)"
+  grep -q 'renderItem' "$f" || continue
+  awk '
+    !inblk && /renderItem[[:space:]]*[=:]/ { inblk = 1; depth = 0; opened = 0 }
+    inblk {
+      if ($0 ~ /style=\{\{/) { hit = 1; exit }
+      n = split($0, c, "")
+      for (i = 1; i <= n; i++) {
+        if (c[i] ~ /[({[]/) { depth++; opened = 1 } else if (c[i] ~ /[)}\]]/) depth--
+      }
+      if (opened && depth <= 0) inblk = 0
+    }
+    END { exit !hit }' "$f" && echo "WARN: $f has an inline style={{ }} inside renderItem (a new object per row render: use a stable style)"
 done
 exit 0

@@ -166,6 +166,83 @@ for pair in "go:go.mod:module x" "spring-boot:pom.xml:<project><parent><artifact
   d="$tmp/init-$st"; mkdir -p "$d"; git -C "$d" init -q -b main; printf '%s' "$content" > "$d/$file"
   expect "init detects $st" 0 bash -c "'$ROOT/bin/init.sh' '$d' >/dev/null && grep -q '^STACK=$st' '$d/.sdkit/sdkit.env'"
 done
+# an Expo app with a prebuilt android/ (it has a build.gradle) is still react-native
+rna="$tmp/init-rn-android"; mkdir -p "$rna/android"; git -C "$rna" init -q -b main
+printf '{"dependencies":{"expo":"54","react-native":"0.81"}}' > "$rna/package.json"; : > "$rna/android/build.gradle"
+expect "init detects react-native with a prebuilt android/" 0 bash -c "'$ROOT/bin/init.sh' '$rna' >/dev/null && grep -q '^STACK=react-native' '$rna/.sdkit/sdkit.env'"
+# known-pitfalls: stack seed when the stack has one, the neutral template otherwise
+expect "init go seeds the typed-nil pitfall" 0 grep -q 'typed-nil' "$tmp/init-go/.sdkit/known-pitfalls.md"
+expect "init react-native gets no Go pitfall" 1 grep -q 'typed-nil' "$tmp/init-react-native/.sdkit/known-pitfalls.md"
+# doctor: third-party skills in .agents/skills are not a non-Claude host install
+mkdir -p "$rna/.agents/skills/foo"; echo '# foo' > "$rna/.agents/skills/foo/SKILL.md"
+expect "doctor ignores third-party .agents/skills" 1 bash -c "'$ROOT/bin/doctor.sh' '$rna' 2>&1 | grep -qE 'AGENTS.md missing|scripts/verify.sh missing|spec-driven-dev missing'"
+cx="$tmp/init-codex-only"; mkdir -p "$cx"; git -C "$cx" init -q -b main; printf 'module x' > "$cx/go.mod"
+expect "doctor still checks a real non-Claude install" 0 bash -c "'$ROOT/bin/init.sh' --host codex '$cx' >/dev/null && '$ROOT/bin/doctor.sh' '$cx' 2>&1 | grep -q 'ok    AGENTS.md present'"
+# doctor: the project.md TODO check passes once the placeholders are gone (the template's explanatory `TODO` stays)
+expect "doctor fails on a fresh project.md" 0 bash -c "'$ROOT/bin/doctor.sh' '$rna' 2>&1 | grep -q 'project.md still has TODO placeholders'"
+sed -i.bak '/^.*`TODO` remains/!s/TODO//g' "$rna/.sdkit/project.md" && rm -f "$rna/.sdkit/project.md.bak"
+expect "doctor accepts project.md with only the explanatory TODO" 0 bash -c "grep -q '\`TODO\`' '$rna/.sdkit/project.md' && '$ROOT/bin/doctor.sh' '$rna' 2>&1 | grep -q 'ok    project.md filled in'"
+# a tool installed as a devDependency (node_modules/.bin) counts as installed
+noprettier="$(printf '%s' "$PATH" | tr ':' '\n' | while IFS= read -r d; do [ -x "$d/prettier" ] || printf '%s\n' "$d"; done | paste -sd: -)"
+expect "doctor warns when prettier is nowhere" 0 bash -c "PATH='$noprettier' '$ROOT/bin/doctor.sh' '$rna' 2>&1 | grep -q 'warn  prettier missing'"
+mkdir -p "$rna/node_modules/.bin"; printf '#!/bin/sh\n' > "$rna/node_modules/.bin/prettier"; chmod +x "$rna/node_modules/.bin/prettier"
+expect "doctor accepts prettier from node_modules/.bin" 0 bash -c "PATH='$noprettier' '$ROOT/bin/doctor.sh' '$rna' 2>&1 | grep -q 'ok    prettier installed'"
+expect "check-tools hook accepts prettier from node_modules/.bin" 1 bash -c "echo '{}' | PATH='$noprettier' CLAUDE_PROJECT_DIR='$rna' '$ROOT/hooks/check-tools.sh' | grep -q -- '- prettier'"
+rm "$rna/node_modules/.bin/prettier"
+expect "check-tools hook reports prettier when it is nowhere" 0 bash -c "echo '{}' | PATH='$noprettier' CLAUDE_PROJECT_DIR='$rna' '$ROOT/hooks/check-tools.sh' | grep -q -- '- prettier'"
+# react-native stack content: Expo rules and the pitfalls seed, nothing of it in other stacks
+expect "init react-native installs the Expo rules" 0 test -f "$tmp/init-react-native/.sdkit/rules/expo-idioms.md"
+expect "init react-native seeds the RN pitfalls" 0 grep -q 'FlashList v2' "$tmp/init-react-native/.sdkit/known-pitfalls.md"
+expect "init nextjs gets neither" 1 bash -c "test -f '$tmp/init-nextjs/.sdkit/rules/expo-idioms.md' || grep -q 'FlashList' '$tmp/init-nextjs/.sdkit/known-pitfalls.md'"
+# RN forbidden-patterns policy: inline style warns inside renderItem only (NativeWind keeps dynamic values in style)
+rnp="$tmp/rn-policy"; mkdir -p "$rnp"; git -C "$rnp" init -q -b main; ( cd "$rnp" && git config user.email t@t && git config user.name t && echo '{}' > package.json && git add -A && git commit -qm b ) >/dev/null 2>&1
+rnbase="$(git -C "$rnp" rev-parse HEAD)"
+printf '%s\n' 'const L = () => <FlatList data={d} renderItem={renderRow} />;' 'const Card = ({ on }) => <View className="rounded p-4" style={{ transform: [{ scale: on ? 0.95 : 1 }] }} />;' > "$rnp/Card.tsx"
+printf '%s\n' 'const L = () => (' '  <FlatList' '    data={d}' '    renderItem={({ item }) => (' '      <View style={{ padding: 4 }}><Text>{item.name}</Text></View>' '    )}' '  />' ');' > "$rnp/List.tsx"
+rnpol() { (cd "$rnp" && VERIFY_LIB="$ROOT/scripts/verify-lib.sh" VERIFY_MERGE_BASE="$rnbase" VERIFY_CHANGED="$1" VERIFY_CHANGED_SRC="$1" bash "$ROOT/stacks/react-native/verify.d.example/10-forbidden-patterns.sh.example"); }
+expect "rn policy warns on style={{ inside renderItem" 0 bash -c "$(declare -f rnpol); rnp='$rnp' rnbase='$rnbase' ROOT='$ROOT'; rnpol List.tsx | grep -q 'WARN: List.tsx has an inline style'"
+expect "rn policy is quiet on style={{ outside renderItem" 1 bash -c "$(declare -f rnpol); rnp='$rnp' rnbase='$rnbase' ROOT='$ROOT'; rnpol Card.tsx | grep -q 'inline style'"
+# --- Expo checks (PR: rn-expo-checks) ---
+ex="$tmp/expo-app"; mkdir -p "$ex/.claude" "$ex/node_modules/.bin"; git -C "$ex" init -q -b main
+printf 'STACK=react-native\n' > "$ex/.claude/project.env"; printf 'node_modules/\n.claude/\n' > "$ex/.gitignore"
+printf '{"dependencies":{"expo":"54","react-native":"0.81","nativewind":"4"}}' > "$ex/package.json"
+printf '{"expo":{"name":"a","plugins":["expo-router"]}}' > "$ex/app.json"
+( cd "$ex" && git config user.email t@t && git config user.name t && git add -A && git commit -qm b ) >/dev/null 2>&1
+exbase="$(git -C "$ex" rev-parse HEAD)"
+expol() { (cd "$ex" && VERIFY_LIB="$ROOT/scripts/verify-lib.sh" VERIFY_MERGE_BASE="$exbase" VERIFY_CHANGED="$1" VERIFY_CHANGED_SRC="$1" bash "$ROOT/stacks/react-native/verify.d.example/40-expo.sh.example"); }
+printf '#!/bin/sh\necho "The following packages should be updated for best compatibility with the installed expo version:"\necho "  - react-native-reanimated@3.0.0 - expected version: ~4.1.0"\nexit 1\n' > "$ex/node_modules/.bin/expo"; chmod +x "$ex/node_modules/.bin/expo"
+expect "expo policy fails on SDK-misaligned dependencies" 0 bash -c "$(declare -f expol); ex='$ex' exbase='$exbase' ROOT='$ROOT'; expol package.json | grep -q '^FAIL: package.json: dependencies do not match'"
+printf '#!/bin/sh\nexit 0\n' > "$ex/node_modules/.bin/expo"
+expect "expo policy is quiet on aligned dependencies" 1 bash -c "$(declare -f expol); ex='$ex' exbase='$exbase' ROOT='$ROOT'; expol package.json | grep -q 'FAIL'"
+printf '{"expo":{"name":"b","plugins":["expo-router"]}}' > "$ex/app.json"
+expect "expo policy ignores a non-native app.json change" 1 bash -c "$(declare -f expol); ex='$ex' exbase='$exbase' ROOT='$ROOT'; expol app.json | grep -q 'prebuild'"
+printf '{"expo":{"name":"b","plugins":["expo-router","expo-camera"]}}' > "$ex/app.json"
+expect "expo policy asks for prebuild on a plugin change" 0 bash -c "$(declare -f expol); ex='$ex' exbase='$exbase' ROOT='$ROOT'; expol app.json | grep -q 'WARN: app.json: plugins or ios/android settings changed'"
+echo 'const A = ({ p }) => <View className="scale-95 rounded" />;' > "$ex/A.tsx"
+expect "expo policy is quiet on a static NativeWind transform class" 1 bash -c "$(declare -f expol); ex='$ex' exbase='$exbase' ROOT='$ROOT'; expol A.tsx | grep -q 'conditional NativeWind'"
+echo 'const B = ({ p }) => <Pressable className={p ? "scale-95 opacity-80" : "opacity-100"} />;' > "$ex/B.tsx"
+expect "expo policy warns on a toggled NativeWind transform class" 0 bash -c "$(declare -f expol); ex='$ex' exbase='$exbase' ROOT='$ROOT'; expol B.tsx | grep -q 'WARN: conditional NativeWind'"
+rm -f "$ex/A.tsx" "$ex/B.tsx"; git -C "$ex" checkout -q -- app.json
+# RN lint: no eslint but a local prettier -> prettier --check on the changed files
+echo 'export const x = 1;' > "$ex/x.tsx"
+printf '#!/bin/sh\necho "[warn] x.tsx"\nexit 1\n' > "$ex/node_modules/.bin/prettier"; chmod +x "$ex/node_modules/.bin/prettier"
+expect "rn verify runs prettier --check without eslint" 0 bash -c "cd '$ex' && out=\$('$ROOT/stacks/react-native/scripts/verify.sh' --no-cache); [ \$? = 1 ] && printf '%s' \"\$out\" | grep -q 'FAIL: prettier --check'"
+printf '#!/bin/sh\nexit 0\n' > "$ex/node_modules/.bin/prettier"
+expect "rn verify passes a clean prettier --check" 0 bash -c "cd '$ex' && '$ROOT/stacks/react-native/scripts/verify.sh' --no-cache"
+# RN tools: device tooling hints only when the native projects exist
+expect "rn tools: no adb hint without android/" 1 bash -c "'$ROOT/stacks/react-native/scripts/tools.sh' '$ex' | grep -q '|adb|'"
+mkdir -p "$ex/android"
+expect "rn tools: adb hint with android/" 0 bash -c "'$ROOT/stacks/react-native/scripts/tools.sh' '$ex' | grep -q '^optional|adb|'"
+# --- React Native skill recommendations (PR: rn-skill-ecosystem) ---
+for k in expo bare; do d="$tmp/skills-$k"; mkdir -p "$d"; git -C "$d" init -q -b main; done
+printf '{"dependencies":{"expo":"54","react-native":"0.81"}}' > "$tmp/skills-expo/package.json"
+printf '{"dependencies":{"react-native":"0.81"}}' > "$tmp/skills-bare/package.json"
+expect "init recommends the Expo skills on an Expo app" 0 bash -c "'$ROOT/bin/init.sh' '$tmp/skills-expo' 2>&1 | grep -q 'claude plugin install expo@claude-plugins-official'"
+expect "init skips the Expo skills on a bare RN app" 0 bash -c "out=\$('$ROOT/bin/init.sh' '$tmp/skills-bare' 2>&1); printf '%s' \"\$out\" | grep -q 'vercel-labs/agent-skills' && ! printf '%s' \"\$out\" | grep -q 'expo/skills'"
+expect "init recommends no RN skills on other stacks" 0 bash -c "out=\$('$ROOT/bin/init.sh' '$tmp/init-go' 2>&1); printf '%s' \"\$out\" | grep -q '^done. next' && ! printf '%s' \"\$out\" | grep -q 'React Native: optional'"
+mkdir -p "$tmp/skills-expo/.agents/skills/building-native-ui"
+expect "doctor warns about an outdated Expo skill" 0 bash -c "'$ROOT/bin/doctor.sh' '$tmp/skills-expo' 2>&1 | grep -q 'warn  .agents/skills/building-native-ui is an outdated Expo skill'"
+expect "doctor: third-party skills still are not a host install" 1 bash -c "'$ROOT/bin/doctor.sh' '$tmp/skills-expo' 2>&1 | grep -q 'AGENTS.md missing'"
 # python / generic verify
 pyd="$tmp/py-verify"; mkdir -p "$pyd"; git -C "$pyd" init -q -b main; ( cd "$pyd" && git config user.email t@t && git config user.name t && printf '[project]\n' > pyproject.toml && git add -A && git commit -qm b && git checkout -qb f ) >/dev/null 2>&1
 echo 'def g(:' > "$pyd/bad.py"; expect "python verify fails on a syntax error" 1 bash -c "cd '$pyd' && '$ROOT/stacks/python/scripts/verify.sh' --fast --no-cache"

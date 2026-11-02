@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# Expo policy (see rules/expo-idioms.md), for apps that depend on `expo`; a no-op otherwise. Off until you enable it
+# (remove the .example extension). Checks: SDK version alignment when package.json changes, prebuild reminders for
+# native app-config changes, NativeWind classes that crash when toggled on re-render.
+# Protocol: print "FAIL: <message>" or "WARN: <message>" lines; the verify engine counts them.
+. "${VERIFY_LIB:?run this through the verify engine}"
+
+has_dep() { jq -e --arg p "$2" '(.dependencies[$p] // .devDependencies[$p]) // empty' "$1/package.json" >/dev/null 2>&1; }
+local_bin() { local d="$1"; while :; do [ -x "$d/node_modules/.bin/$2" ] && { echo "$d/node_modules/.bin/$2"; return; }; [ "$d" = . ] && return; d="$(dirname "$d")"; done; }
+
+# 1. a changed package.json: dependencies must match the versions the installed Expo SDK expects
+for pj in $(printf '%s\n' "$VERIFY_CHANGED" | grep -E '(^|/)package\.json$'); do
+  dir="$(dirname "$pj")"; [ -f "$pj" ] && has_dep "$dir" expo || continue
+  expo="$(local_bin "$dir" expo)"
+  [ -n "$expo" ] || { echo "WARN: $pj changed but expo is not installed: run 'npx expo install --check' after installing"; continue; }
+  out="$(cd "$dir" && CI=1 "$expo" install --check 2>&1)" && continue
+  if printf '%s\n' "$out" | grep -qiE 'should be updated|expected version'; then
+    echo "FAIL: $pj: dependencies do not match the Expo SDK, run 'npx expo install --fix' (or pin them on purpose):"
+    printf '%s\n' "$out" | grep -E '^[[:space:]]*-|expected' | head -10 | sed 's/^/FAIL:   /'
+  else
+    echo "WARN: $pj: 'expo install --check' could not run (offline?): $(printf '%s' "$out" | tail -1)"
+  fi
+done
+
+# 2. app config: plugins or native ios/android keys changed -> the native projects must be regenerated
+for cfg in $(printf '%s\n' "$VERIFY_CHANGED" | grep -E '(^|/)app\.(json|config\.[a-z]+)$'); do
+  [ -f "$cfg" ] || continue
+  case "$cfg" in
+    *.json)
+      q='(.expo // .) | {plugins, ios, android}'
+      now="$(jq -cS "$q" "$cfg" 2>/dev/null)"
+      before="$(git show "$VERIFY_MERGE_BASE:$cfg" 2>/dev/null | jq -cS "$q" 2>/dev/null)"
+      [ "$now" = "$before" ] && continue ;;
+    *)
+      { git diff -U0 "$VERIFY_MERGE_BASE" -- "$cfg"; added_lines "$cfg"; } | grep -E '^[+-][^+-]' | grep -qE '\b(plugins|ios|android)\b' || continue ;;
+  esac
+  echo "WARN: $cfg: plugins or ios/android settings changed: run 'npx expo prebuild' (--clean if a plugin was removed) and test on a device or simulator"
+done
+
+# 3. NativeWind: transform/shadow/transition/ring classes inside a conditional className crash when toggled (expo/expo#38423)
+if [ -f package.json ] && has_dep . nativewind; then
+  src=(':(glob)**/*.tsx' ':(glob)**/*.jsx' ':!*/node_modules/*' ':!node_modules/*')
+  added_lines "${src[@]}" | grep -E 'className=\{[^}]*(\?|&&|\$\{)' \
+    | grep -E '(^|[^A-Za-z-])-?(shadow|scale|translate|rotate|transition|ring)(-|["'"'"'` ]|$)' \
+    | head -5 | while IFS= read -r l; do
+      echo "WARN: conditional NativeWind transform/shadow/transition/ring class (crash on toggle, use style or Reanimated): ${l#+}"
+    done
+fi
+exit 0

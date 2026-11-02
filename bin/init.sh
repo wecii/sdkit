@@ -76,7 +76,7 @@ for h in $(printf '%s' "$HOSTS" | tr ',' ' '); do [ "$h" = claude ] || OTHER_HOS
 command -v jq >/dev/null || { say "jq is required"; exit 1; }
 git -C "$TARGET" rev-parse --git-dir >/dev/null 2>&1 || { say "$TARGET is not a git repository"; exit 1; }
 
-STACKS="go spring-boot jvm react-native nextjs python generic"
+STACKS="go spring-boot react-native jvm nextjs python generic"
 if [ -z "$STACK" ]; then
   for s in $STACKS; do [ -x "$SCAFFOLD_ROOT/stacks/$s/detect.sh" ] && "$SCAFFOLD_ROOT/stacks/$s/detect.sh" "$TARGET" && { STACK="$s"; break; }; done
 fi
@@ -123,7 +123,8 @@ say "project profile (project-owned: fill in)"
 ENV_NEW=0; [ -f "$TARGET/$KIT_DIR/$ENV_FILE" ] || ENV_NEW=1
 install_template templates/sdkit.env "$KIT_DIR/$ENV_FILE"
 install_template templates/project.md "$KIT_DIR/project.md"
-install_template templates/known-pitfalls.md "$KIT_DIR/known-pitfalls.md"
+pitfalls_tpl=templates/known-pitfalls.md; [ -f "$SCAFFOLD_ROOT/stacks/$STACK/known-pitfalls.md" ] && pitfalls_tpl="stacks/$STACK/known-pitfalls.md"
+install_template "$pitfalls_tpl" "$KIT_DIR/known-pitfalls.md"
 # price table (Bedrock list, USD per million tokens): without it every cost figure is N/A. Kit-written; `sdkit doctor --update-pricing` refreshes it, a table you edit is never touched
 install_template templates/pricing.json "$KIT_DIR/pricing.json"
 install_template templates/adr/TEMPLATE.md "$KIT_DIR/adr/TEMPLATE.md"
@@ -321,5 +322,15 @@ if [ "$OTHER_HOSTS" = 1 ]; then
   want_host opencode && say "OpenCode: roles in .opencode/agents (shell permission key is '$(sed -n 's/^OPENCODE_SHELL_KEY=//p' "$TARGET/$KIT_DIR/$ENV_FILE" | tail -1)'; on older releases set OPENCODE_SHELL_KEY=bash in $KIT_DIR/$ENV_FILE and run sync.sh), guard plugin in .opencode/plugins."
   want_host cursor && say "Cursor: the kit's hooks were merged into .cursor/hooks.json next to yours; hooks and subagents may be IDE-only (see docs/guide.md section 13)."
   want_host gemini && say "Gemini CLI: the kit's hooks and context file were merged into .gemini/settings.json next to your settings; subagents may need the experimental flag."
+fi
+if [ "$STACK" = react-native ]; then
+  # third-party skills are referenced, never vendored: they change upstream every week (docs/guide.md, Stacks)
+  has_expo=0
+  while IFS= read -r p; do jq -e '(.dependencies.expo // .devDependencies.expo) // empty' "$p" >/dev/null 2>&1 && has_expo=1; done \
+    < <(find "$TARGET" -maxdepth 3 -name package.json -not -path '*/node_modules/*' 2>/dev/null)
+  say "React Native: optional third-party skills (not part of the kit; install them yourself):"
+  [ "$has_expo" = 1 ] && say "  Expo (expo-router, expo-native-ui, expo-data-fetching ...): claude plugin install expo@claude-plugins-official   other hosts: npx skills add expo/skills"
+  say "  React Native rules: npx skills add vercel-labs/agent-skills   performance: npx skills add callstackincubator/agent-skills"
+  say "  (npx skills add writes .agents/skills/; doctor does not count it as a host install)"
 fi
 [ "${OPENSPEC_PENDING:-0}" = 1 ] && say "NOTE: the workflow needs OpenSpec; doctor will fail until it is installed and initialised." || true

@@ -76,8 +76,8 @@ detect_hosts() {
   [ -d "$t/.opencode/agents" ] && h="${h:+$h,}opencode"
   [ -d "$t/.cursor/agents" ] && h="${h:+$h,}cursor"
   [ -d "$t/.gemini/agents" ] && h="${h:+$h,}gemini"
-  # a repo with AGENTS.md / .agents/skills but no host directory yet is a Codex setup (0.3 layout)
-  if { [ -z "$h" ] || [ "$h" = claude ]; } && { [ -f "$t/AGENTS.md" ] || [ -d "$t/.agents/skills" ]; }; then h="${h:+$h,}codex"; fi
+  # a repo with AGENTS.md / the kit skill in .agents/skills (not third-party skills) but no host directory yet is a Codex setup (0.3 layout)
+  if { [ -z "$h" ] || [ "$h" = claude ]; } && { [ -f "$t/AGENTS.md" ] || [ -d "$t/.agents/skills/spec-driven-dev" ]; }; then h="${h:+$h,}codex"; fi
   echo "${h:-claude}"
 }
 detect_mode() { if [ -d "$1/.claude/hooks" ]; then echo copy; else echo plugin; fi; }
