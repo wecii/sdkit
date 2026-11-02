@@ -125,7 +125,7 @@ A guard is not trusted until it has been seen to "fail and then pass": try both 
 
 ## Versioning and release
 
-1. Make the change. If you changed roles in `core/roles/`, run `bin/build-adapters.sh` and commit the generated files too. Update the related tables in `docs/guide.md` and the README (including part counts: number of skills/roles/hooks/scripts; currently 4 skills, 10 roles, 16 hooks, 17 scripts).
+1. Make the change. If you changed roles in `core/roles/`, run `bin/build-adapters.sh` and commit the generated files too. Update the related tables in `docs/guide.md` and the README (including part counts: number of skills/roles/hooks/scripts; currently 4 skills, 10 roles, 19 hooks, 33 scripts).
 2. Bump the version in `.claude-plugin/plugin.json` **and** `.claude-plugin/marketplace.json` together (both must match).
    - patch: fix, docs
    - minor: new skill/agent/hook/setting (off by default)

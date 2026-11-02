@@ -230,6 +230,7 @@ def tbl($h; $rows): ("| " + ($h | join(" | ")) + " |"), ("|" + ($h | map("---") 
 def dur: if . == null then "N/A" else (floor) as $s | if $s < 60 then "\($s)s" elif $s < 3600 then "\($s / 60 | floor)m\($s % 60)s" else "\($s / 3600 | floor)h\(($s % 3600) / 60 | floor)m" end end;
 def pctc: if . == null then "N/A" else "\(.)%" end;
 def costtxt($c): if $c.state == "unavailable" then "N/A (no pricing)" else usd($c.api_equivalent_usd) + (if $c.state == "partial" then " (PARTIAL: \($c.unpriced_runs) run(s) unpriced, lower bound)" else "" end) end;
+def hit_txt($t): if ($t.cache_hit_rate // null) == null then "" else " · cache hit \(($t.cache_hit_rate * 1000 | round) / 10)%" end;
 def tokens_row($t): if $t.state == "unavailable" then "N/A (nothing recorded)" else "\($t.total | commas)" + (if $t.state == "partial" then " (lower bound: some runs unmeasured)" else "" end) end;
 def savtxt($s): ($s.tokens as $t | $s.cost as $c |
    "tokens: " + (if $t.state == "na" then $t.text else "\($t.saved_tokens | commas) saved (\($t.rate_pct | pctc), estimated, \($t.confidence) confidence)" end)
@@ -270,7 +271,7 @@ def md_task_detail: md_task, "### Savings method", "",
 def txt_task: "SDKit Value Report — \(.summary)",
   "  \(.task.duration.s | dur) · workflow \(.task.workflow.profile // "N/A") · host \(.task.hosts | if length == 0 then "N/A" else join(",") end) · files \(.task.files_changed.n // "N/A") · tests \(if .task.tests.state == "not recorded" then "n/r" else "\(.task.tests.passed)p/\(.task.tests.failed)f" end) · gates \(.task.quality_gates.state)",
   (if (.roles | length) > 0 then "  roles:" , (.roles[] | "    \(.role) [\(.kind)] \(.model // "?") x\(.runs)  \(if .tokens == null then "N/A" else (.tokens | commas) end) tok  \(if .cost_usd == null then "N/A" else usd(.cost_usd) end)") else "  roles: none recorded" end),
-  "  usage: \(tokens_row(.tokens)) tokens (in \(.tokens.in | commas) out \(.tokens.out | commas) cache_read \(.tokens.cache_read | commas) cache_write \(.tokens.cache_write | commas)) · est. API-equivalent cost \(costtxt(.cost))",
+  "  usage: \(tokens_row(.tokens)) tokens (in \(.tokens.in | commas) out \(.tokens.out | commas) cache_read \(.tokens.cache_read | commas) cache_write \(.tokens.cache_write | commas))\(hit_txt(.tokens)) · est. API-equivalent cost \(costtxt(.cost))",
   "  savings: " + savtxt(.savings),
   "  optimizations: " + (if (.optimizations | length) == 0 then "none observed" else (.optimizations | map("\(.name) [\(.class)]") | join(", ")) end),
   "  validation: tests \(.validation.tests | if length == 0 then "none recorded" else join(", ") end) · verification \(.validation.final // "not recorded")",
@@ -288,7 +289,7 @@ def md_session: "## SDKit Session Summary — \(.session.id)", "", "**\(.summary
   "### Caveats", "", (.warnings | if length == 0 then "- none" else map("- " + .) | .[] end);
 def txt_session: "SDKit Session Summary — \(.summary)",
   "  tasks \(.tasks.total): completed \(.tasks.completed), partial \(.tasks.partial), failed/aborted \(.tasks.failed), blocked \(.tasks.blocked)",
-  "  executions \(.executions.total) across \(.roles | map(.role) | unique | length) role(s) · tokens \(tokens_row(.tokens)) · est. API-equivalent cost \(costtxt(.cost))",
+  "  executions \(.executions.total) across \(.roles | map(.role) | unique | length) role(s) · tokens \(tokens_row(.tokens))\(hit_txt(.tokens)) · est. API-equivalent cost \(costtxt(.cost))",
   "  evidence reuse \(.evidence_reuse) · skipped \(.skipped) · tests \(.validation.tests_passed)p/\(.validation.tests_failed)f",
   "  savings: " + savtxt(.savings),
   "  details: sdkit report session \(.session.id) --detailed";

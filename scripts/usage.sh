@@ -26,6 +26,11 @@
 #   usage.sh scan [--session ID | --since YYYY-MM-DD] [--dir DIR] [--slug S]
 #                               Claude Code only: read the session transcript(s) and their subagent transcripts and log them as origin "observed"
 #                               (same ids as the hooks, so nothing is counted twice). Default: the most recent session.
+#   usage.sh context [transcript] [--top N] [--json]
+#                               Claude Code only: where a session's context came from. Tool results by tool (calls, ~tokens = chars/4, share) and the
+#                               N largest single results, with "re-read" = tokens x the turns that came after the result (what it cost to carry it).
+#                               Default transcript: the most recent session of this project. No prompts or file contents are printed, only a short
+#                               label (command or path) per result. Use it to decide what to cap (capped.sh) or delegate.
 #   usage.sh extract <transcript> [--since TS]   one JSON object with the token totals of a transcript (the hooks use this; one parser, one rule);
 #                               --since counts only requests from TS on (a session serving several tasks is charged to each task from its start)
 #   usage.sh reconcile [--slug S]   fill in subagent runs logged as unmeasured (transcript not yet written at SubagentStop) from the transcripts now on disk
@@ -266,6 +271,39 @@ case "$cmd" in
   extract)
     [ -f "${1:-}" ] || { echo "usage.sh extract <transcript> [--since TS]" >&2; exit 2; }
     extract_json "$1" "$([ "${2:-}" = --since ] && printf '%s' "${3:-}")" | { read -r j && [ -n "$j" ] && printf '%s\n' "$j" || exit 1; } ;;
+  context)
+    tf=""; topn=5; json=0
+    while [ $# -gt 0 ]; do case "$1" in --top) topn="${2:-5}"; shift ;; --json) json=1 ;; -*) echo "unknown option $1" >&2; exit 2 ;; *) tf="$1" ;; esac; shift; done
+    case "$topn" in ''|*[!0-9]*) topn=5 ;; esac
+    if [ -z "$tf" ]; then
+      cdir="${CLAUDE_TRANSCRIPT_DIR:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/$(printf '%s' "$top" | sed 's/[^A-Za-z0-9]/-/g')}"
+      tf="$(ls -t "$cdir"/*.jsonl 2>/dev/null | head -1)"
+    fi
+    [ -f "$tf" ] || { echo "context: no transcript (Claude Code only; pass a path)" >&2; exit 1; }
+    res="$(jq -cs --argjson top "$topn" '
+      def sz: if type == "string" then length elif type == "array" then (map(if type == "object" then ((.text // "") | length) else (tostring | length) end) | add // 0) else (tostring | length) end;
+      [ .[] | select(type == "object") ] as $rec
+      | ( [ $rec[] | select(.type == "assistant") | .message.content[]? | select(type == "object" and .type == "tool_use")
+            | {key: .id, value: {name: .name, label: ((.input.command // .input.file_path // .input.pattern // .input.description // "") | tostring | gsub("[\n\r]"; " ") | .[0:70])}} ] | from_entries ) as $use
+      # turns after record i: distinct requests (requestId, else message id) of assistant records with usage, counted once at their first record
+      | ( reduce range(0; $rec | length) as $i ({seen: {}, first: []};
+            ($rec[$i]) as $r
+            | if $r.type == "assistant" and (($r.message.usage // null) | type) == "object" and (($r.requestId // $r.message.id // null) != null) and (.seen[$r.requestId // $r.message.id] | not)
+              then .seen[$r.requestId // $r.message.id] = true | .first += [1] else .first += [0] end) ) as $acc
+      | ($acc.first | add // 0) as $turns
+      | ( reduce range(0; $rec | length) as $i ({c: 0, after: []}; .c += $acc.first[$i] | .after += [.c]) ).after as $cum
+      | [ range(0; $rec | length) as $i | $rec[$i] | select(.type == "user") | .message.content? | arrays | .[] | select(type == "object" and .type == "tool_result")
+          | {tool: ($use[.tool_use_id].name // "?"), label: ($use[.tool_use_id].label // ""), tok: ((.content | sz) / 4 | floor), later: ($turns - $cum[$i])} | .reread = .tok * .later ] as $r
+      | ($r | map(.tok) | add // 0) as $tt
+      | {transcript_turns: $turns, results: ($r | length), result_tokens: $tt, reread_tokens: ($r | map(.reread) | add // 0),
+         by_tool: ($r | group_by(.tool) | map({tool: .[0].tool, calls: length, tokens: (map(.tok) | add), reread: (map(.reread) | add), share: (if $tt > 0 then ((map(.tok) | add) * 100 / $tt | floor) else 0 end)}) | sort_by(-.reread)),
+         largest: ($r | sort_by(-.reread) | .[0:$top] | map({tool, label, tokens: .tok, later_turns: .later, reread}))}' "$tf" 2>/dev/null)" || res=""
+    [ -n "$res" ] || { echo "context: could not read $tf" >&2; exit 1; }
+    if [ "$json" = 1 ]; then printf '%s\n' "$res"; else
+      printf '%s\n' "$res" | jq -r '"session context: \(.transcript_turns) turns, \(.results) tool results, ~\(.result_tokens) tokens of results; carrying them cost ~\(.reread_tokens) re-read tokens (tokens x the turns after each result)"'
+      printf '%s\n' "$res" | jq -r '(["tool", "calls", "~tokens", "share", "~re-read"] | @tsv), (.by_tool[] | [.tool, .calls, .tokens, "\(.share)%", .reread] | @tsv)' | column -t -s "$(printf '\t')" 2>/dev/null
+      printf '%s\n' "$res" | jq -r '"", "largest results by re-read cost:", (.largest[] | "  \(.tool)  ~\(.tokens) tokens x \(.later_turns) later turns = \(.reread)   \(.label)")'
+    fi ;;
   prices)
     pf="${TELEMETRY_PRICES:-$top/$KIT_DIR/pricing.json}"; json=0; [ "${1:-}" = --json ] && json=1
     if [ ! -f "$pf" ]; then
