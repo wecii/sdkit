@@ -193,6 +193,9 @@ eq "run-role: a host that prints no usage is unavailable, not 0" "$(jq -r 'selec
 run s3 verifier                                       # VERIFIER_HOST=codex: no token output
 eq "run-role: codex run is unavailable too"            "$(jq -r 'select(.type=="agent.end" and .role=="verifier") | .q.tokens + " " + .host' "$(ev "$H" h1)")" "unavailable codex"
 check "summary names the unmeasured runs"              bash -c "'$TL' summary h1 | grep -q 'measured 1 of 3 runs'"
+ul() { SDKIT_BENCH_SCENARIO="$T/fx" SDKIT_BENCH_STEP="$1" USAGE_LINE=1 PATH="$KIT/bench/stub-host:$PATH" "$KIT/scripts/run-role.sh" "$2" --handoff hand.md --cwd "$H" --out "$H/o2.md" 2>&1 >/dev/null | grep '^\[sdkit\]'; }
+eq "run-role: USAGE_LINE=1 prints in, out and cache hit"   "$(ul s1 developer)" "[sdkit] developer done — in: 660, out: 40, cache hit: 75%"
+eq "run-role: no usage data says so, no numbers"           "$(ul s2 developer)" "[sdkit] developer done — token usage not available (claude gave no data)"
 mkdir -p "$T/onlyjq" && ln -sf "$(command -v jq)" "$T/onlyjq/jq"
 eq "run-role: host missing is a failure"               "$(PATH="$T/onlyjq:/usr/bin:/bin" SDKIT_BENCH_STEP=s9 "$KIT/scripts/run-role.sh" developer --handoff hand.md --cwd "$H" --host gemini >/dev/null 2>&1; "$TL" summary h1 --json | jq -r '.failures.by_category["host-missing"]')" 1
 # hooks

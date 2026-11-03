@@ -114,7 +114,7 @@ AGENT_<ROLE>_TIER=light|standard|strong       # sdkit.env: the tier (and so the 
 | `stop-verify` | block: "done" with a broken vet/build | no verify script |
 | `guard-readonly` | deny: a read-only role changing files | off if the call has no role |
 | `value-report` | Value Report session summary at session end/start (does not block, no stdout) | `VALUE_REPORT` ≠ `on` |
-| `usage-log` | token ledger and (`TELEMETRY=1`) the `agent.end` event (does not block) | `USAGE_LOG` and `TELEMETRY` ≠ `1` |
+| `usage-log` | token ledger, (`TELEMETRY=1`) the `agent.end` event, and (`USAGE_LINE=1`) a one-line usage summary per finished subagent (does not block) | `USAGE_LOG`, `TELEMETRY` and `USAGE_LINE` ≠ `1` |
 | `guard-budget` | ask/warning: `MAX_SPAWNS` or `TOKEN_BUDGET_TASK` exceeded | both empty |
 | `guard-noisy` | ask: a long-output command (tests, build) outside `capped.sh` | `NOISY_CMD_PATTERNS` empty |
 | `result-size` | warning: role answer too long | `SUBAGENT_RESULT_MAX_LINES` empty |

@@ -138,6 +138,7 @@ Every other developer installs `sdkit` on their machine and, for Claude Code, ac
 | `ROUTING` (`sdkit.env`) | `off` | route.sh decisions are not applied by `run-role.sh` ([section 9](#9-routing-and-cost-controls)) |
 | `CONTRACTS` (`sdkit.env`) | empty (off) | handoff contracts are optional and unchecked |
 | `USAGE_LOG` (`sdkit.local.env`) | `1` | token ledger on |
+| `USAGE_LINE` (`sdkit.local.env`) | `1` | one usage line (in, out, cache hit) when a subagent finishes |
 | `TELEMETRY` (`sdkit.local.env`) | empty (off) | no event log, so the Value Report shows tests and gates as N/A |
 | `TOKEN_BUDGET_TASK`, `MAX_SPAWNS`, `ROUTE_*` budgets | empty (off) | no limits; the kit imposes no numbers |
 | `VALUE_REPORT` (`sdkit.local.env`) | `on` in the current template | automatic report at task end and session end (a repo created earlier gets it from `sdkit upgrade`) |

@@ -293,6 +293,13 @@ else
 fi
 [ -x "$here/usage.sh" ] && "$here/usage.sh" log --role "$role" --tier "$tier" --host "$host" --model "$model" --id "${span:-$xid}" --kind final \
   --in "${tin:-0}" --out "${tout:-0}" --cache-read "${cr:-0}" --cache-write "${cw:-0}" --tq "$tq" ${hcost:+--cost-est "$hcost"} --source run-role >/dev/null 2>&1
+if [ "${USAGE_LINE:-}" = 1 ]; then   # the same one-line summary the Claude SubagentStop hook prints (hooks/usage-log.sh); stderr, so the answer stays clean
+  if [ "$tq" = actual ]; then
+    awk -v r="$role" -v i="${tin:-0}" -v o="${tout:-0}" -v cr="${cr:-0}" -v cw="${cw:-0}" -v h="$host" 'function k(n) { return n >= 1000 ? sprintf("%.1fk", n / 1000) : n }
+      BEGIN { t = i + cr + cw; c = (h == "claude" || h ~ /^ext:/) && t > 0 ? sprintf("%d%%", cr * 100 / t) : "n/a"
+        printf "[sdkit] %s done — in: %s, out: %s, cache hit: %s\n", r, k(t), k(o), c }' >&2
+  else echo "[sdkit] $role done — token usage not available ($host gave no data)" >&2; fi
+fi
 erc=0; prc=""; rdur="$dur"
 if [ -n "$evrun" ]; then
   pa=(); prop="$(jq -r '.proposal // empty' "$top/$KIT_DIR/.sdd/state.json" 2>/dev/null)"
