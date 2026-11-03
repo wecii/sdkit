@@ -22,23 +22,92 @@ AI agents are fast, but left alone they skip steps, mark their own homework and 
 - **You stay in control.** You confirm the risk label and approve the plan before anything is proposed. Incidents become guards (`incident-to-rule`).
 - **Cost is measured, not promised.** A usage ledger, budgets and a Value Report show tokens and cost per task, and print `N/A` where records are missing.
 
+## What you get
+
+| Area | Plain agentic development | With SDKit | Evidence |
+|---|---|---|---|
+| **Token use** | One strong model reads, searches and re-reads in a growing context | Tiered models, short handoffs, cached verification and scouting, budgets | **~70% lower total token use**, measured by the maintainer on their own workloads |
+| **Cost** | Top-tier model for every step | Cheap tier for search and planning checks, strong tier only for design and high-risk verification | Estimated against a stated baseline in the Value Report |
+| **Time** | Sequential work in one session; rework after review finds missed requirements; repeated test runs | Independent tasks run as parallel subagents in separate worktrees, orchestrated by roles; gaps caught at intake; no repeated work on an unchanged tree | **~40% less wall-clock time**, measured by the maintainer on their own workloads |
+| **Efficiency and quality** | The author reports "done" | Verifier checks the diff against the Definition of Done; stale verdicts are refused after any edit | Enforced by the phase gate; `sdkit report task` shows the verdict |
+| **Team work** | Every developer prompts differently | One committed `.sdkit/` (risk rubric, rules, checks) gives everyone, on any supported agent, the same process, with the same CI gate | Enforced by hooks, git hooks and CI |
+| **Visibility** | A chat log | Phase, evidence, tokens and cost on demand; per-task Value Report | Local records, no model call |
+
+The ~70% (tokens) and ~40% (time) figures are a single maintainer's measurements, not benchmarks: results depend on task mix, model and stack. Measure your own with `sdkit report task <task>`, which prints `N/A` rather than a guess where records are missing. Method and caveats: [docs/design-report.md](docs/design-report.md).
+
 ## How it works
 
+You give the agent a task. SDKit moves it through a **phase machine** (`scripts/sdd.sh`). Each move has an exit condition that a script checks, so the agent cannot skip a step by deciding it is not needed. The path is not a straight line: some steps loop, some branch by risk, and failures have defined exits.
+
 ```mermaid
-flowchart LR
-  A["/spec-driven-dev<br/>your task"] --> B["Intake<br/>analyst brief"]
-  B --> C{{"You confirm<br/>the risk label"}}
-  C --> D{{"You approve<br/>the plan"}}
-  D --> E["Proposal<br/>+ Definition of Done"]
-  E --> F["Test first<br/>RED"]
-  F --> G["Implement<br/>GREEN"]
-  G --> H["Independent<br/>verification"]
-  H -->|PASS| I["PR, merge,<br/>Value Report"]
-  H -->|BLOCK| R["one retry,<br/>then you decide"]
-  R --> G
+flowchart TD
+  T["/spec-driven-dev<br/>ticket or description"] --> AN["Intake: analyst checks the request<br/>phase: intake"]
+  AN -->|"incomplete"| Q["Questions back to you"]
+  Q --> AN
+  AN --> RK{{"You confirm the risk label<br/>low / medium / high"}}
+  RK --> EX["Explore: scout finds code, cached per code state"]
+  EX --> PG{{"Plan gate: you approve the plan<br/>1 / 3 / 5 question rounds by risk"}}
+  PG -->|"Edit a section"| PG
+  PG -->|"Stop here"| AB["Task stops here"]
+  PG -->|"Approve and propose"| PR["Propose: proposal + design + Definition of Done<br/>phase: proposed"]
+  PR -->|"no DoD list: refused"| PR
+  PR --> RED["Write the failing test, only test files may change<br/>phase: red"]
+  RED -->|"test passes: refused"| RED
+  RED --> GRN["Implement until the test passes<br/>phase: green"]
+  GRN --> VR{"Verification by risk"}
+  VR -->|"low"| LV["verify command passes"]
+  VR -->|"medium"| MV["independent verifier"]
+  VR -->|"high"| HV["verifier + reviewer + security-auditor<br/>on the exact diff"]
+  LV --> VD{"Verdict"}
+  MV --> VD
+  HV --> VD
+  VD -->|"PASS"| VF["phase: verified"]
+  VD -->|"BLOCK, implementation bug"| RT["developer retries once<br/>with only the failing items"]
+  RT --> GRN
+  VD -->|"BLOCK, spec gap"| PG
+  VD -->|"second BLOCK"| YOU["Automatic retries stop, you decide"]
+  VF -->|"edit after verified"| ST["Verdict is stale"]
+  ST --> VR
+  VF --> PRQ["Commit, push, open PR<br/>phase: pr"]
+  PRQ --> MG["You merge the PR<br/>phase: done"]
+  MG --> CO["Closeout: specs archived, memory candidates,<br/>Value Report"]
 ```
 
-Gate phases: `intake → proposed → red → green → verified → pr → done`. The full walk-through, with real command output, is in **[docs/developer-workflow.md](docs/developer-workflow.md)**.
+Gate phases: `intake → proposed → red → green → verified → pr → done` (plus `aborted`). Specification and planning both happen inside `intake`.
+
+### Step by step
+
+| Step | Phase | What happens | It moves on when |
+|---|---|---|---|
+| **Intake** | `intake` | The `analyst` checks that the request is complete and proposes a risk label from your `project.md` rubric | You confirm the label |
+| **Explore** | `intake` | `scout` answers "where is X" cheaply; answers are cached per code state | The problem is grounded in code |
+| **Plan gate** | `intake` | For medium/high the `engineer` drafts design, test strategy and task split. You are questioned on the plan in batched rounds (1 low, 3 medium, 5 high) | You pick `Approve and propose` |
+| **Propose** | `proposed` | `plan.md` becomes `proposal.md`, `design.md`, `specs/`, `tasks.md`. Every acceptance criterion is a testable line `D<n>: ... \| Verified by: ...` | `advance proposed` finds a Definition of Done list (high: also a race/ordering section) |
+| **Test first** | `red` | `test-writer` writes the failing test. Only test files may change | `advance red` runs the test and it **fails** |
+| **Implement** | `green` | `developer` writes code until the test passes. Independent tasks (disjoint `writes:`) run as parallel subagents in separate worktrees | `advance green` runs the test and it **passes** |
+| **Verify** | `verified` | Depends on risk (see below). Evidence is tied to the exact diff | A PASS for this diff |
+| **PR** | `pr` | Commit, push and open the PR. Push is denied before `verified` | `advance pr` |
+| **Closeout** | `done` | After you merge: specs synced and archived, memory entries you pick, Value Report written | `advance done` |
+
+### When it is not a straight line
+
+| Situation | What SDKit does |
+|---|---|
+| Request is incomplete | The analyst sends questions back; nothing is proposed until the brief is complete |
+| You want to change the plan | `Edit a section` re-runs only the affected rounds; `Stop here` ends the task |
+| Proposal has no Definition of Done | `advance proposed` is refused with the reason; fix and retry |
+| Test passes before any code exists | `advance red` is refused: the test must fail, for the right reason |
+| Tasks overlap or depend on each other | `after:` links order them; tasks with overlapping `writes:` never run in parallel (`plan-waves.sh` computes the waves) |
+| Verifier `BLOCK`, implementation bug | One automatic retry with only the failing items |
+| Verifier `BLOCK`, spec gap | Back to the plan gate. No retry against a broken target |
+| Second `BLOCK` | Automatic retries stop and you decide. No third loop |
+| Code edited after verification | The verdict is stale; push and PR are refused until you verify again |
+| Valid evidence already exists for this diff | With `ROUTING=on` it is reused and nothing runs again |
+| Budget would be exceeded | Stops before the spawn that goes over; you continue, raise the limit or stop. Verification is never shortened |
+| Session crashed or was killed | Records stay on disk; `recover.sh scan` and `state.sh <task> show` resume the task |
+| You abandon the task | `sdd.sh abort` ends it and still writes the report |
+
+Every box above maps to a real mechanism. Real command output for each step: **[docs/developer-workflow.md](docs/developer-workflow.md)** §5 and §10.
 
 ### Risk decides the rigor
 
