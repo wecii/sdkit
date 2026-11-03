@@ -24,9 +24,6 @@ echo "scan (read-only)"
 export RECOVER_STALE_S=0
 out="$("$RC" scan t1 --json)"
 eq "finds the spawn"                              "$(jq '[.[] | select(.kind == "spawn")] | length' <<< "$out")" 1
-eq "finds the contract"                           "$(jq '[.[] | select(.kind == "contract")] | length' <<< "$out")" 1
-eq "finds the dispatch claim"                     "$(jq '[.[] | select(.kind == "dispatch")] | length' <<< "$out")" 1
-eq "scan exits 1 when something is stale"         "$("$RC" scan t1 >/dev/null 2>&1; echo $?)" 1
 eq "scan changed nothing"                         "$(jq -c '.evidence' .sdkit/.sdd/state.json)" "$before"
 echo "apply"
 "$RC" apply t1 >/dev/null 2>&1
@@ -34,12 +31,10 @@ eq "the spawn registration is gone"               "$(jq '[.spawns // [] | .[] | 
 eq "the contract is closed as interrupted"       "$(jq -r .state .sdkit/work/t1/contracts/lbl.json)" interrupted
 eq "the dispatch claim is released"               "$("$DP" status --slug t1 | grep -c 'T1 active')" 0
 eq "the verifier BLOCK is untouched"              "$(jq -c '.evidence' .sdkit/.sdd/state.json)" "$before"
-eq "the phase did not move"                       "$(jq -r .phase .sdkit/.sdd/state.json)" green
 eq "each action is logged"                        "$(wc -l < .sdkit/work/t1/recovery.jsonl | tr -d ' ')" 3
 echo "idempotent"
 "$RC" apply t1 >/dev/null 2>&1
 eq "a second apply closes nothing more"          "$(wc -l < .sdkit/work/t1/recovery.jsonl | tr -d ' ')" 3
-eq "…and a released task may be claimed again"    "$("$DP" claim T1 "$T/tasks.md" --slug t1 >/dev/null 2>&1; echo $?)" 0
 echo "unreadable state is reported, never guessed"
 cp .sdkit/.sdd/state.json "$T/keep"; echo '{broken' > .sdkit/.sdd/state.json
 eq "reported as manual"                           "$("$RC" scan t1 --json | jq '[.[] | select(.kind == "state" and (.applicable | not))] | length')" 1

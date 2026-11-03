@@ -9,7 +9,7 @@
 #   workflow.sh announce                        telemetry only: the contract level the task's profile sets, as one workflow.decision event
 #   workflow.sh profiles                        the profiles, one line each
 #   workflow.sh evidence-roles                  the roles whose independent PASS (trusted, this diff) the open task needs beyond the verify command (F04): high risk = verifier reviewer security-auditor
-#   workflow.sh capabilities [--json]           what each execution path really enforces (F04); the claims are checked against the shipped files by tests/slow/evidence.test.sh
+#   workflow.sh capabilities [--json]           what each execution path really enforces (F04); the claims are checked against the shipped files by tests/evidence.test.sh
 # Profiles (chosen with `sdd.sh start --profile`, default standard, fixed for the task like the risk label; they never lower a risk gate):
 #   small           low risk only. No contract overhead even if CONTRACTS=1. Everything `low` already allows; nothing mandatory is skipped.
 #   standard        today's workflow, unchanged. Contracts: optional with CONTRACTS=1, else off.

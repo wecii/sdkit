@@ -40,7 +40,7 @@ for p in ~/code/projectA ~/code/projectB; do <kit>/bin/upgrade.sh "$p"; done
 - **Stack scripts:** `verify.sh` is now a thin entry point; the logic is in `steps.sh` (stack) and `scripts/verify-core.sh` (shared). All are managed files, `sync.sh` updates them. If you customized a copied `verify.sh`, `sync.sh` shows a CONFLICT: move the customization into a `verify.d/` policy or `VERIFY_CMD` and take the new file.
 - **Usage logging is off:** for the token ledger write `USAGE_LOG=1` in `project.env`; report with `scripts/usage.sh report`.
 - **New behaviour:** task state is kept in `work/<slug>/state.json` (resuming, single automatic retry); verifier output is validated with `parse-verdict.sh`; in parallel tasks the `writes:` scope is checked with `check-writes.sh`; `WORKTREE:` is added to the handoff. The read-only restriction on roles is now enforced on every host.
-- **Kit maintainers:** run `bin/build-adapters.sh --check` and `tests/slow/run.sh`; not needed for projects.
+- **Kit maintainers:** run `bin/build-adapters.sh --check` and `tests/smoke.test.sh`; not needed for projects.
 - **If you want to add a new host:** `<kit>/bin/init.sh --host <host> /path/to/project` (e.g. `opencode`, `cursor`, `gemini`); the project dir name does not change (the existing one is kept).
 
 ### 0.2.x → 0.3.0
