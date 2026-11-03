@@ -64,7 +64,7 @@ O="$T/oldsdkit"; newrepo "$O"; mkdir -p "$O/.sdkit"
 cat > "$O/.sdkit/sdkit.env" <<'E'
 BASE_BRANCH=develop
 STACK=go
-# Most subagents running at once; scripts/plan-waves.sh splits any wave larger than this (a positive integer)
+# Most subagents running at once; scripts/plan-waves.sh splits any wave larger than this. A positive integer. Default: 3
 MAX_PARALLEL=5
 # my own note
 SERVICES_DIR=svc

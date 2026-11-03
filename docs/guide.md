@@ -125,7 +125,9 @@ old kit versions that is still in the file is deleted by hand once.
 
 The main skill. Starts with `/spec-driven-dev <ticket or description>`. It runs the steps below in order, calling the OpenSpec skills
 (`openspec-explore`, `openspec-propose`, `openspec-sync-specs`, `openspec-archive-change`). The main session plays the **orchestrator** role.
-The skill is kept short; details are under `references/` and read only at the relevant step (`plan-gate.md`, `parallel.md`, `handoff.md`, `hosts.md`, `model-routing.md`).
+The skill is kept short; details are under `references/` and read only at the relevant step (`plan-gate.md`, `parallel.md`, `handoff.md`, `hosts.md`, `model-routing.md`, `progress.md`).
+
+**Progress line.** At the start and at the end of every step the orchestrator prints one line, `[sdkit] Step 5/8: implement — started` / `… — done`, so the developer sees which step runs and how many are left. The total counts only the steps that run for this change (7 for `low`, which has no verification step; 8 for `medium` and `high`); failure routing (§6) is not a step. Before the risk label is confirmed the total is shown as `?`. The format and counting rules are defined once in `skills/spec-driven-dev/references/progress.md`.
 
 ### Step 0: Input, analyst and risk label
 - If a ticket number is given and `TRACKER` is set, the ticket is fetched; otherwise the description becomes the task directly.

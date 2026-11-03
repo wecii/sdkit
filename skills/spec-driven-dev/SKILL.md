@@ -11,6 +11,8 @@ Orchestrates the full task lifecycle by driving the existing `openspec-*` (`opsx
 
 You are the **orchestrator** (`core/roles/orchestrator.md`). Roles are agents named in `agents/`: `analyst`, `scout`, `engineer`, `developer`, `test-writer`, `devsecops`, `verifier`, `reviewer`, `security-auditor`. How to ask the user, run a role or run roles in parallel on your host: `references/hosts.md`. How to brief a role: `references/handoff.md`. Model per task (`size:` in tasks, `TIER` in the handoff): `references/model-routing.md`, read when you write the execution plan. Token rules: `rules/token-economy.md`; test rules: `rules/test-first.md`. Read a reference only at the step that names it.
 
+**Progress**: at the start and end of every step print one line `[sdkit] Step <n>/<total>: <name> — started|done` (`references/progress.md`: format, the step list per risk, how `total` is counted; read it once the risk label is confirmed).
+
 ## Resume
 
 State lives in a file, not in your head: `<kit>/scripts/state.sh <slug> show` prints `<project-dir>/work/<slug>/state.json` (step, risk, branch, task statuses, retries, verdict). If one exists for this task, continue from its `step` instead of starting over; update it at every step (`state.sh <slug> set step <n>`, `task <id> <status>`). Create it once the risk label is confirmed: `state.sh <slug> init <risk> <branch>`.
