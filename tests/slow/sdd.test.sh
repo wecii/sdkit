@@ -35,6 +35,12 @@ is "git push denied"             deny  "$(hook guard-pr.sh "$(bash_ 'git push or
 is "gh pr create denied"         deny  "$(hook guard-pr.sh "$(bash_ 'gh pr create --fill')")"
 is "plain bash allowed"          allow "$(hook guard-pr.sh "$(bash_ 'ls -la')")"
 is "state tampering denied"      deny  "$(hook guard-pr.sh "$(bash_ 'echo x > .agentkit/.sdd/state.json')")"
+is "git add attestation allowed"  allow "$(hook guard-pr.sh "$(bash_ 'git add .agentkit/attestations/x.json')")"
+is "git commit attestation allowed" allow "$(hook guard-pr.sh "$(bash_ 'git commit -m "docs: add .agentkit/attestations/x.json" -- .agentkit/attestations/x.json')")"
+is "attestation named in PR text allowed" allow "$(hook guard-pr.sh "$(bash_ 'echo "see .agentkit/attestations/x.json -> ok"')")"
+is "attestation redirect denied"  deny  "$(hook guard-pr.sh "$(bash_ 'echo {} > .agentkit/attestations/x.json')")"
+is "attestation sed -i denied"    deny  "$(hook guard-pr.sh "$(bash_ 'sed -i s/a/b/ .agentkit/attestations/x.json')")"
+is "attestation rm denied"        deny  "$(hook guard-pr.sh "$(bash_ 'rm .agentkit/attestations/x.json')")"
 
 echo "intake"
 refuse "start needs a risk"      "$SDD" start t1 --proposal openspec/changes/x/proposal.md
