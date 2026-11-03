@@ -86,7 +86,7 @@ Since 1.0 there is a single project dir for every host: **`.sdkit/`**. It **is c
 | Under `.sdkit/` | Git | Note |
 |---|---|---|
 | `sdkit.env`, `project.md`, `rules/`, `known-pitfalls.md`, `adr/`, `verify.d/`, `roles.d/`, `memory/`, `attestations/` | **yes** | Shared by the team; updated over time (updates always target this place). `sdkit.env` is the team's machine-readable policy: release flow, protected paths and branches, prod cluster, secret patterns, stack and verification settings, memory location |
-| `sdkit.local.env` | no | Personal, read after `sdkit.env` and overrides it: token budget and limits, `USAGE_LOG`, `MAX_PARALLEL`, memory behaviour (`MEMORY_AUTOLOAD`, `MEMORY_PROMOTE` ...), host and model choice |
+| `sdkit.local.env` | no | Personal, read after `sdkit.env` and overrides it: token budget and limits, `USAGE_LOG`, `USAGE_LINE`, `MAX_PARALLEL`, memory behaviour (`MEMORY_AUTOLOAD`, `MEMORY_PROMOTE` ...), host and model choice |
 | `work/`, `.frozen`, `.verify-cache/`, `.sdd/` | no | Run time |
 | `hooks/`, `roles/`, `tiers.env`, `scripts/*` (except `sdd.sh`, `resolve-base.sh` and `env.sh`, for CI), `.scaffold-*` | no | `sdkit init` generates the same for everyone |
 
