@@ -1,6 +1,6 @@
 {
   "name": "spec-driven-kit",
-  "version": "1.3.7",
+  "version": "1.3.8",
   "repository": "https://github.com/wecii/sdkit.git",
   "license": "MIT",
   "description": "Spec-driven development workflow with guard hooks, verifier agents and a one-command project bootstrap.",

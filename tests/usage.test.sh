@@ -235,6 +235,15 @@ rm -f .sdkit/work/h1/usage.jsonl; stop "$sess/main/subagents/agent-ag1.jsonl" ag
 eq "orchestrator + analyst are both accounted"                           "$(jv '.by_role|map(.role)|sort|join(",")' "$US" report h1 --json)" "analyst,orchestrator"
 eq "...the hook runs again without duplicating anything"                 "$(stop "$sess/main/subagents/agent-ag1.jsonl" ag1 analyst; turn; jv '[.totals.runs,.coverage.duplicates_collapsed]|join(",")' "$US" report h1 --json)" "2,0"
 
+echo "the usage line (USAGE_LINE=1)"
+um() { USAGE_LINE=1 stop "$@" | jq -r '.systemMessage // empty'; }
+{ asst sl1 m-a 1800 u1 8000; } > "$sess/main/subagents/agent-ag2.jsonl"
+eq "a finished subagent prints in, out and cache hit"                    "$(um "$sess/main/subagents/agent-ag2.jsonl" ag2 spec-driven-kit:verifier)" "[sdkit] verifier done — in: 8.0k, out: 1.8k, cache hit: 99%"
+eq "an unreadable transcript says so instead of showing numbers"        "$(um "" agNone verifier)" "[sdkit] verifier done — token usage not available (the host gave no data)"
+eq "off unless USAGE_LINE=1"                                             "$(stop "$sess/main/subagents/agent-ag2.jsonl" ag2 verifier)" ""
+eq "works without USAGE_LOG"                                             "$(USAGE_LOG= USAGE_LINE=1 stop "$sess/main/subagents/agent-ag2.jsonl" ag2 verifier | jq -r .systemMessage)" "[sdkit] verifier done — in: 8.0k, out: 1.8k, cache hit: 99%"
+eq "a Stop (not a subagent) prints no line"                              "$(USAGE_LINE=1 turn)" ""
+
 echo "scan: sessions the hooks never saw"
 tr="$T/proj"; mkdir -p "$tr/sessA/subagents"
 { asst x1 m-a 30; asst x2 m-a 40; } > "$tr/sessA.jsonl"; { asst y1 m-a 5; asst y1 m-a 15; } > "$tr/sessA/subagents/agent-agA.jsonl"
