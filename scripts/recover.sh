@@ -19,7 +19,7 @@ case "$mode" in scan|apply) ;; *) echo "usage: recover.sh scan|apply [slug] [--j
 notask=0; [ -n "$slug" ] || { notask=1; slug=_none; }   # without an open task only the project-wide part (budget reservations) can apply
 ttl="${RECOVER_STALE_S:-1800}"; case "$ttl" in ''|*[!0-9]*) ttl=1800 ;; esac
 work="$top/$KIT_DIR/work/$slug"; now="$(date +%s)"; items='[]'
-mt() { stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null || echo "$now"; }
+mt() { stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null || echo "$now"; }   # GNU first: on GNU stat -f means filesystem status and succeeds with text
 iso_s() { date -u -j -f %Y-%m-%dT%H:%M:%SZ "$1" +%s 2>/dev/null || date -u -d "$1" +%s 2>/dev/null || echo "$now"; }
 add() {  # kind id action detail
   items="$(jq -c --arg k "$1" --arg i "$2" --arg a "$3" --arg d "$4" --arg ap "${5:-yes}" '. + [{kind:$k, id:$i, action:$a, detail:$d, applicable:($ap == "yes")}]' <<< "$items")"; }

@@ -8,8 +8,13 @@ sdd="$(kit_cmd "" scripts/sdd.sh)"
 mode="$("$sdd" mode)"
 [ "$mode" = off ] && exit 0
 
-printf '%s' "$command" | grep -qE '\.sdd/|attestations/|hooks/(record-verdict|guard-budget)\.sh' && \
+printf '%s' "$command" | grep -qE '\.sdd/|hooks/(record-verdict|guard-budget)\.sh' && \
   decide deny "The workflow state and verdicts are written only by sdd.sh and the verifier hook, never by hand."
+# An attestation is written only by sdd.sh, but the author commits it ("commit it with the change"), so git add/commit/status/diff and a
+# mention in a commit or PR text must pass. Deny only a command that writes the file: a redirection, or a write verb, aimed at attestations/.
+att_write='(^|[^-=>])>>?[[:space:]]*[^;&|]*attestations/|(^|[^A-Za-z0-9_.-])(tee|cp|mv|rm|touch|truncate|dd|install|ln|chmod|sed[[:space:]]+-[A-Za-z]*i|perl[[:space:]]+-[A-Za-z]*i)([[:space:]]+[^;&|]*)?[[:space:]][^;&|]*attestations/'
+printf '%s' "$command" | grep -qE "$att_write" && \
+  decide deny "Attestations are written only by sdd.sh. You may git add and commit one, but not edit, copy, move or delete it."
 # the hook-only subcommands anywhere in a command that runs the kit, not only right after sdd.sh (S=_evidence; sdd.sh $S ... is the same call).
 # A regex over a command string is a speed bump, not a boundary: docs/guide.md "What the guards cannot stop".
 printf '%s' "$command" | grep -qE 'sdd\.sh|parse-verdict\.sh|run-role\.sh' && printf '%s' "$command" | grep -qE '(^|[^A-Za-z0-9])_(verdict|evidence|spawn)([^A-Za-z0-9]|$)' && \

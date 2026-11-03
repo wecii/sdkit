@@ -43,7 +43,7 @@ Pick where to start by your role.
 | [upgrading.md](upgrading.md) | Upgrading projects to a new kit version, manual steps per version |
 | [hosts.md](hosts.md) | PR hosts (Bitbucket, GitHub, GitLab) and CI gates |
 | [../stacks/README.md](../stacks/README.md) | Stack contract: `detect.sh`, `steps.sh`, `tools.sh`, `permissions.txt` |
-| [../tests/slow/run.sh](../tests/slow/run.sh) | Script/hook/init smoke test for kit maintainers |
+| [../tests/smoke.test.sh](../tests/smoke.test.sh) | Script/hook/init smoke test for kit maintainers |
 
 ## Glossary
 

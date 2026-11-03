@@ -48,7 +48,7 @@ Size: 242 tracked files, 16 hooks, 16 scripts, 10 roles, 4 skills, 7 stacks; the
 | # | Capability | Class | Actual implementation | Limitation |
 |---|---|---|---|---|
 | 1 | Architecture, entry points | Implemented | `bin/sdkit` dispatcher; roles single-sourced in `core/roles/`, `build-adapters.sh --check` in sync (10 role files) | Project dir resolver copied in 12 files (§6 D1) |
-| 2 | CLI: init/doctor/sync/upgrade/migrate | Implemented | `bin/*.sh`; `tests/slow/shared.test.sh` (29), `sdkit-dir.test.sh` (64) | `doctor` checks statically only; no live host |
+| 2 | CLI: init/doctor/sync/upgrade/migrate | Implemented | `bin/*.sh`; `tests/shared.test.sh` (29), `sdkit-dir.test.sh` (64) | `doctor` checks statically only; no live host |
 | 3 | Phase machine `intake→…→done` | Implemented (after `start`) / **Partial** (before) | `sdd.sh advance` checks every gate itself; the red test must actually **fail**, DoD present, race section at high, diff fingerprint | Analyst, risk confirmation and plan gate exist only in the skill text; the agent can run `start --risk low` itself (§6 R3) |
 | 4 | Roles, handoff, orchestration | Implemented | `references/handoff.md`, `delegation.md`, `parallel.md`; the "roles never call roles" rule; independent roles are `read-only` | Orchestration is prose: the machine does not catch a breach of the rules (the no-role-calls rule is unverified on OpenCode/Codex) |
 | 5 | Model selection/routing | **Partial** | Tier single source `core/tiers.env`; `run-role.sh` resolves host/tier/model in a script (`--dry-run` tested) | On the Claude path, passing the `model` parameter to the `Agent` tool depends on the orchestrator model remembering it (`model-routing.md`); the `tierenv` logic lives only in `run-role.sh`, no other caller |
@@ -245,8 +245,8 @@ Missing (really): an event log of phase transitions, cost history after closeout
 
 | Check | Result |
 |---|---|
-| `tests/slow/run.sh` | 109 passed, 0 failed |
-| `tests/slow/sdd.test.sh` / `shared` / `memory` / `budget` / `sdkit-dir` | 52 / 29 / 38 / 45 / 64 passed, 0 failed |
+| `tests/smoke.test.sh` | 109 passed, 0 failed |
+| `tests/sdd.test.sh` / `shared` / `memory` / `budget` / `sdkit-dir` | 52 / 29 / 38 / 45 / 64 passed, 0 failed |
 | `bin/build-adapters.sh --check` | adapters up to date (10 role files) |
 | Experiment B1: `guard-pr.sh` ← `parse-verdict.sh … --record` | `deny` |
 | Experiment B2: `record-verdict.sh` ← DoD `FAIL` + `VERDICT: PASS` | `PASS` written to the state file; `parse-verdict.sh` exit 2 |
@@ -275,7 +275,7 @@ The experiments were run in temporary `git init` directories; kit files were not
 | D2 | fixed | `sdkit_active_slug`: the open SDD task (if `work/<slug>/state.json` exists), otherwise the old heuristic. `sdd.sh task` added. Used by `guard-budget`, `run-role`, `usage.sh` | two tasks, ledger slug, both fallback paths |
 | B3 | fixed | The `lookup-cache` key includes untracked file names+contents; the kit's own `work/`, `.sdd`, `.verify-cache` paths are excluded | new file, edit, own file, tracked edit |
 | B4 | fixed, **differently from the audit's recommendation** | Single default `go` (`SDKIT_DEFAULT_STACK`, `scripts/env.sh`). `generic` had been recommended, but `go` is the documented default (`guide.md` §10) and the silent assumption of Go-only repos from before stacks existed; switching to `generic` would break them. The one place that deviated (`sdd.sh`) was aligned; `doctor` warns on an empty `STACK` | source scan, default, explicit value, doctor |
-| R3 | fixed (optional feature) | ADR-0005: `RISK_FLOOR_GLOBS=level:glob,...`, off when empty. Uses the existing `matches_glob_list` and `changed_files` (the fingerprint's file set, untracked files included); checked by `advance green`/`verified` and `ci-check`. CI recomputes the floor itself (it does not trust the `floor` field in the attestation), a low-risk attestation does not satisfy a high floor, `RISK_FLOOR_GLOBS` and `SDD_MODE` in the base branch's `sdkit.env` cannot be loosened by the PR, a file that matches the floor needs an attestation even under free globs, and a malformed value is refused. Details and limits: `upgrading.md` | 76 cases, `tests/slow/risk-floor.test.sh` |
+| R3 | fixed (optional feature) | ADR-0005: `RISK_FLOOR_GLOBS=level:glob,...`, off when empty. Uses the existing `matches_glob_list` and `changed_files` (the fingerprint's file set, untracked files included); checked by `advance green`/`verified` and `ci-check`. CI recomputes the floor itself (it does not trust the `floor` field in the attestation), a low-risk attestation does not satisfy a high floor, `RISK_FLOOR_GLOBS` and `SDD_MODE` in the base branch's `sdkit.env` cannot be loosened by the PR, a file that matches the floor needs an attestation even under free globs, and a malformed value is refused. Details and limits: `upgrading.md` | 76 cases, `tests/risk-floor.test.sh` |
 
 Unchanged: the phase machine, the hook contract (`exit 0`, silent on its own error), the role and host architecture, the `sdd.sh gate` interface, the attestation format. Still open: the P2/P3 items in §7 (R3 was closed by the row below).
 

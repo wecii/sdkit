@@ -40,7 +40,7 @@ for p in ~/code/projectA ~/code/projectB; do <kit>/bin/upgrade.sh "$p"; done
 - **Stack scripts:** `verify.sh` is now a thin entry point; the logic is in `steps.sh` (stack) and `scripts/verify-core.sh` (shared). All are managed files, `sync.sh` updates them. If you customized a copied `verify.sh`, `sync.sh` shows a CONFLICT: move the customization into a `verify.d/` policy or `VERIFY_CMD` and take the new file.
 - **Usage logging is off:** for the token ledger write `USAGE_LOG=1` in `project.env`; report with `scripts/usage.sh report`.
 - **New behaviour:** task state is kept in `work/<slug>/state.json` (resuming, single automatic retry); verifier output is validated with `parse-verdict.sh`; in parallel tasks the `writes:` scope is checked with `check-writes.sh`; `WORKTREE:` is added to the handoff. The read-only restriction on roles is now enforced on every host.
-- **Kit maintainers:** run `bin/build-adapters.sh --check` and `tests/slow/run.sh`; not needed for projects.
+- **Kit maintainers:** run `bin/build-adapters.sh --check` and `tests/smoke.test.sh`; not needed for projects.
 - **If you want to add a new host:** `<kit>/bin/init.sh --host <host> /path/to/project` (e.g. `opencode`, `cursor`, `gemini`); the project dir name does not change (the existing one is kept).
 
 ### 0.2.x → 0.3.0
@@ -219,3 +219,8 @@ Nothing changes until you opt in; every new setting is off or empty by default.
 - **`parse-verdict.sh`** now distinguishes `MALFORMED[format]` (asked again once) from `MALFORMED[semantic]`; a hand-written parser of its messages should look for both.
 - **Docs are English** from this version on (`docs/`, `CONTRIBUTING.md`).
 - **CI gates:** `init --ci` now writes templates that run the base branch's own gate, and `init --ci gitlab` installs a GitLab merge-request gate. Re-run `sdkit init --ci <host>` only if you want the new template; existing CI files are not overwritten.
+
+## 1.4.0: a fast test suite that runs in a container
+
+No manual step for projects. `recover.sh` now reads file times correctly on Linux (GNU `stat`), so `sdkit recover` works there too.
+For people working on the kit: the whole suite takes about 15 s. `tests/slow/` is gone (the long versions are kept in `tests/old/` as a reference and never run); every area has a short test in `tests/`. `tests/fast.sh` runs inside a Debian container by default (`tests/docker/Dockerfile`), `tests/fast.sh --no-docker` runs on the machine, and `--all` no longer exists. The kit's jq programs need jq 1.8 or newer, and `redact.sh` needs an `awk` that supports `{n}` repetition (gawk, not mawk).

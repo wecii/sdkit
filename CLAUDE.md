@@ -30,6 +30,6 @@ Orientation: `README.md` (overview), `docs/guide.md` (full guide), `CONTRIBUTING
 
 ## Checking a change
 
-Run the tests your change maps to (`scripts/test-select.sh run`; `tests/fast.sh` runs every test under 30 s in parallel; `tests/fast.sh --all` adds `tests/slow/`, the smoke tests `tests/slow/run.sh` of the deterministic scripts, hooks, run-role dry runs and init, before a release), `bin/build-adapters.sh --check`, `bash -n` on touched scripts, `jq .` on touched JSON, `shellcheck` if installed, and exercise hooks by piping a
+Run the tests your change maps to (`scripts/test-select.sh run`; `tests/fast.sh` runs every test in parallel inside a Debian container (`--no-docker` to run locally) and flags one over 30 s; `tests/smoke.test.sh` is the smoke test of the deterministic scripts, hooks, run-role dry runs and init; `tests/old/` is the long pre-slimming reference, never run), `bin/build-adapters.sh --check`, `bash -n` on touched scripts, `jq .` on touched JSON, `shellcheck` if installed, and exercise hooks by piping a
 sample tool-call JSON on stdin (both a case that must trigger and one that must not). For `init.sh`/`doctor.sh`, run them against a
 scratch `git init` directory. See `CONTRIBUTING.md` for the commands.

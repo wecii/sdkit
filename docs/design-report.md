@@ -1,6 +1,6 @@
 # Value Report: task and session value report
 
-`scripts/report.sh` (`sdkit report ...`) automatically reports **what SDKit did in a task and in a session, who did it, what it spent, and what it saved in a demonstrable way**. It is **not** a new telemetry system: it only reads the records the kit already keeps. It makes no LLM calls (pinned by a test: host CLIs on a trapped PATH are never called). Verification: `tests/slow/report.test.sh`.
+`scripts/report.sh` (`sdkit report ...`) automatically reports **what SDKit did in a task and in a session, who did it, what it spent, and what it saved in a demonstrable way**. It is **not** a new telemetry system: it only reads the records the kit already keeps. It makes no LLM calls (pinned by a test: host CLIs on a trapped PATH are never called). Verification: `tests/report.test.sh`.
 
 ## 1. What it reuses
 
@@ -90,4 +90,4 @@ Role and physical run are separate: in the table it is `role (kind)`, where the 
 
 ## 8. Overhead
 
-A task report: `usage.sh` + `telemetry.sh summary` + `resolve-base.sh` + a few `jq`; the measurement is in the `tests/slow/report.test.sh` output and the handover note. The report is produced only at the end of a task/session, not per tool call.
+A task report: `usage.sh` + `telemetry.sh summary` + `resolve-base.sh` + a few `jq`; the measurement is in the `tests/report.test.sh` output and the handover note. The report is produced only at the end of a task/session, not per tool call.

@@ -239,7 +239,7 @@ The decision is made in one place, `sdd.sh gate`; Claude hooks, the Cursor/Gemin
 fingerprint; the implementing session's claim does not count, and any later edit makes the verdict stale).
 
 `SDD_MODE` (`sdkit.env`): `strict` rejects (**default**, also strict if empty), `guided` asks in the hook / warns in the git hook, `off` disables. Test file patterns are changed with `SDD_TEST_GLOBS`,
-always-free paths with `SDD_FREE_GLOBS`. Tests: `tests/slow/sdd.test.sh`.
+always-free paths with `SDD_FREE_GLOBS`. Tests: `tests/sdd.test.sh`.
 
 **Server-side gate (CI).** The phase state is git-ignored, so CI cannot see it. That is why `advance verified` writes `<project-dir>/attestations/<task>.json`
 (task, risk, verdict, fingerprint of the changed files, kit version); you **commit** it with the change. CI runs `sdd.sh ci-check`:

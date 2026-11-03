@@ -109,7 +109,7 @@ Project-specific entries go into `<project-dir>/models.json` (a JSON array); the
 Values (F06.1): `help-verified` = **every flag** the capability needs was found in the `--help` output of the CLI installed on that machine (the version is in `core/adapters.json` `_checked`); the behaviour was **not run**;
 `declared` = the kit uses the flag/output according to the host's documented headless mode, **never checked on this machine** (CLI not installed); `estimated` = reported, but only as the host's own client-side estimate, not a bill;
 `kit` = the kit provides it; `none` = not supported. No value means "works end to end with a live model". `route.sh capabilities --probe` re-checks the flags by reading the installed CLIs' `--help` (no model call);
-a missing flag is reported by name, and a CLI that is not installed stays "not verified". `tests/slow/route.test.sh` checks the claims against `run-role.sh`'s command line and the probe.
+a missing flag is reported by name, and a CLI that is not installed stays "not verified". `tests/route.test.sh` checks the claims against `run-role.sh`'s command line and the probe.
 
 | Capability | claude | codex | opencode | cursor | gemini |
 |---|---|---|---|---|---|
@@ -239,7 +239,7 @@ These are **conservative defaults**, not measured quality/cost results. The mode
 Gate roles never go below their own tier, under any condition. Downgrading at low risk is off by default: no "savings" are claimed without F05-B results.
 
 **Token impact**: no mandatory model call is added (decisions are pure shell+jq). Real model calls **may go down** (valid evidence is reused, duplicate runs are blocked, no wasted verification on a diff with a BLOCK),
-but this is not a measurement. Measured deterministic overhead: one `decide` ~0.4 s wall clock (macOS, ~50 local processes), one stderr line per `run-role.sh`. The figures were measured by hand, not in `tests/slow/route.test.sh`.
+but this is not a measurement. Measured deterministic overhead: one `decide` ~0.4 s wall clock (macOS, ~50 local processes), one stderr line per `run-role.sh`. The figures were measured by hand, not in `tests/route.test.sh`.
 
 ### Latency measurement (F06.1; macOS, bash 3.2, `jq` 1.8, 15 repeats, median; local processes only)
 
@@ -303,7 +303,7 @@ Accepted limits:
 
 ## 13. Tests
 
-`tests/slow/route.test.sh` (no model calls; fake CLIs only): configuration and registry, risk/role/capability routing, overrides and preferences, fixed policy, fallback host, mandatory/optional roles, evidence reuse and staleness,
+`tests/route.test.sh` (no model calls; fake CLIs only): configuration and registry, risk/role/capability routing, overrides and preferences, fixed policy, fallback host, mandatory/optional roles, evidence reuse and staleness,
 duplicate and concurrent requests, failure classes with retry/escalation limits, the hard/advisory budget split, unmeasured usage, cost estimate, budget recovery, `run-role.sh` integration,
 telemetry, the Claude Code hook, the old behaviour when routing is off, benchmark files unchanged.
 
@@ -314,5 +314,5 @@ telemetry, the Claude Code hook, the old behaviour when routing is off, benchmar
 - **Numbers are validated strictly**: `1.2.3`, `.`, `1e5`, an empty/negative value is a configuration error (exit 2); in hard mode a `jq`/arithmetic error also fails closed (`CONFIG_INVALID`, cannot be bypassed with `--ignore-budget`).
 - **The reservation must be > 0**: if `ROUTE_RESERVE_USD` is not given, it is derived from `ROUTE_ROLE_TOKENS`/`TOKEN_BUDGET_TASK` × the model's most expensive rate (the basis is in the decision as `reservation_basis`); if it cannot be derived, it stops.
 - **One price resolver**: `route.sh` and `usage.sh` price with the same `SDKIT_PRICE_JQ` (env.sh): the exact model ID, else the ID without a `-YYYYMMDD` suffix; the provider; the validity window.
-- **Project lock**: in hard mode the decision is made under `work/.project-budget.lock` (project first, then the task lock); reading the budget + reserving is one step. Parallel tasks cannot exceed the project limit in total (`tests/slow/reservation.test.sh`).
+- **Project lock**: in hard mode the decision is made under `work/.project-budget.lock` (project first, then the task lock); reading the budget + reserving is one step. Parallel tasks cannot exceed the project limit in total (`tests/reservation.test.sh`).
 - **Reservation lifetime**: `run-role.sh` closes the decision on every exit (success, error, refusal, SIGINT/SIGTERM); releasing is idempotent. A reservation is stale when `ROUTE_RESERVE_TTL_S` (3600) is exceeded **and** its owner process is gone (`route.sh reservations [list|expire]`, `recover.sh apply`); a living process keeps its reservation.

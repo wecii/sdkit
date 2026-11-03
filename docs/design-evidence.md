@@ -58,7 +58,7 @@ All writes go through a single `put` under `sdkit_lock` (read-modify-write). A p
 | The host's own subagents (Codex, OpenCode, Cursor, Gemini) | **none** | by hand (`parse-verdict.sh --record`) | **none**: `manual`, refused at high risk | by hand | detected at advance | enforced | refusal at advance |
 | Git hooks / CI | none | none | attestation review | from the attestation | `ci-check` | `ci-check` | CI log |
 
-`tests/slow/evidence.test.sh` tests the matrix's claims against the shipped files (e.g. no adapter other than Claude's wires `SubagentStop`/`guard-budget`). In the host's own subagents an execution identity cannot be established; at high risk the gate **stays closed** there: on that host the three roles must be run with `run-role.sh`.
+`tests/evidence.test.sh` tests the matrix's claims against the shipped files (e.g. no adapter other than Claude's wires `SubagentStop`/`guard-budget`). In the host's own subagents an execution identity cannot be established; at high risk the gate **stays closed** there: on that host the three roles must be run with `run-role.sh`.
 
 ## 7. CI
 
@@ -83,7 +83,7 @@ At low/medium risk there is **no** new mandatory LLM call. At high risk, `review
 
 **Trust boundary (two categories).** (A) What can be bypassed through agent output and workflow commands (accidentally or at prompt level): code closes it. (B) What needs arbitrary shell/file writes as the same user: cannot be closed locally, and is not presented as "closed" by a regex.
 
-Reproduced attempts and their results (`tests/slow/evidence.test.sh`, "F04.1" block):
+Reproduced attempts and their results (`tests/evidence.test.sh`, "F04.1" block):
 
 | Attempt | Result | Category |
 |---|---|---|
