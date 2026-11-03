@@ -24,7 +24,7 @@ Orientation: `README.md` (overview), `docs/guide.md` (full guide), `CONTRIBUTING
 
 - Keep the numbers and tables in sync in one change: skill/role/hook/script counts and the settings list appear in `README.md`, `core/roles/README.md`, `docs/guide.md`
   (§2, §6, §7, §10, §15) and `docs/cheatsheet.md`.
-- Version bumps go in **both** `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`.
+- Version bumps go in **both** `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`, plus the version badge at the top of `README.md`.
 - Docs: `README.md` short; `docs/` English; details live in `docs/guide.md` and other files link to it instead of repeating it.
 - Commits follow `core/rules/git.md` (`<type>(<scope>): <description>`, imperative, ≤ 72 chars).
 
