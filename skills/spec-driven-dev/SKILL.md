@@ -11,7 +11,7 @@ Orchestrates the full task lifecycle by driving the existing `openspec-*` (`opsx
 
 You are the **orchestrator** (`core/roles/orchestrator.md`). Roles are agents named in `agents/`: `analyst`, `scout`, `engineer`, `developer`, `test-writer`, `devsecops`, `verifier`, `reviewer`, `security-auditor`. How to ask the user, run a role or run roles in parallel on your host: `references/hosts.md`. How to brief a role: `references/handoff.md`. Model per task (`size:` in tasks, `TIER` in the handoff): `references/model-routing.md`, read when you write the execution plan. Token rules: `rules/token-economy.md`; test rules: `rules/test-first.md`. Read a reference only at the step that names it.
 
-**Progress**: at the start and end of every step print one line `[sdkit] Step <n>/<total>: <name> — started|done` (`references/progress.md`: format, the step list per risk, how `total` is counted; read it once the risk label is confirmed).
+**Progress**: at the start and end of every step print one line `[sdkit] orchestrator · Step <n>/<total>: <name> — started|done` (`references/progress.md`: format, the step list per risk, how `total` is counted; read it once the risk label is confirmed).
 
 ## Resume
 

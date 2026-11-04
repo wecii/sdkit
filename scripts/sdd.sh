@@ -43,7 +43,7 @@ tele() {
 }
 # report_final <status>: the Value Report of the task that is ending (scripts/report.sh finalize). Off unless VALUE_REPORT=on; prints on stderr, once per task,
 # and a problem in it never changes what sdd does (the report reads records; it takes no part in a decision).
-REPORT="$(dirname "${BASH_SOURCE[0]}")/report.sh"
+REPORT="$(dirname "${BASH_SOURCE[0]}")/report.sh"; USAGE="$(dirname "${BASH_SOURCE[0]}")/usage.sh"
 report_final() {
   [ "${VALUE_REPORT:-}" = on ] && [ -x "$REPORT" ] || return 0
   local t=""; [ -f "$STATE" ] && t="$(jq -r '.task // empty' "$STATE" 2>/dev/null)"
@@ -265,6 +265,8 @@ cmd_advance() {
   tele phase.enter --from "$cur" --to "$target"
   [ "$target" = done ] && tele task.end --outcome completed
   [ "$target" = done ] && report_final completed
+  # the running token totals of the task, for the step line (USAGE_LINE=1; kept by the usage hook, read here, never computed by the model)
+  if [ "${USAGE_LINE:-}" = 1 ] && [ -x "$USAGE" ]; then "$USAGE" live pull --slug "$(get .task)" >/dev/null 2>&1; echo "usage: $("$USAGE" live show --slug "$(get .task)" 2>/dev/null || echo 'not available')" >&2; fi
   if [ "$target" = done ]; then rm -f "$PROJECT_DIR/$KIT_DIR/.frozen"; rm -rf "$STATE_DIR"; echo "task closed"; else echo "phase: $target"; fi
   # a phase boundary is the cheapest place to drop the conversation: everything decided is in files now (stderr: stdout stays the phase line)
   if [ "${CONTEXT_HINT:-}" = 1 ]; then case "$target" in

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Token ledger: one JSON line per agent run (and model), so usage and cost can be measured instead of guessed. Off unless USAGE_LOG=1 in sdkit.env
+# Token ledger: one JSON line per agent run (and model), so usage and cost can be measured instead of guessed. Off unless USAGE_LOG=1 (or USAGE_LINE=1, whose step line reads it) in sdkit.env
 # (log is then a silent no-op). File: <project-dir>/work/<slug>/usage.jsonl (personal, gitignored).
 #   usage.sh log --role R [--tier T] [--host H] [--model M] [--provider P] [--in N] [--out N] [--cache-read N] [--cache-write N]
 #                [--slug S] [--id ID] [--session SID] [--origin sdk|observed] [--kind snapshot|final] [--status S] [--source X]
@@ -34,6 +34,8 @@
 #   usage.sh extract <transcript> [--since TS]   one JSON object with the token totals of a transcript (the hooks use this; one parser, one rule);
 #                               --since counts only requests from TS on (a session serving several tasks is charged to each task from its start)
 #   usage.sh reconcile [--slug S]   fill in subagent runs logged as unmeasured (transcript not yet written at SubagentStop) from the transcripts now on disk
+#   usage.sh live show|pull     running totals of the open task for the step line (USAGE_LINE=1), read from the ledger: show prints the orchestrator's
+#                               share and the task total; pull first reads the orchestrator from the host's own transcript where there is no hook (Codex)
 #   usage.sh window             start of the open task (ISO UTC) or nothing: the --since value the hooks pass for the orchestrator
 #   usage.sh budget [slug]      used vs TOKEN_BUDGET_TASK (in + out + cache-write; cache reads are cheap and left out).
 #                               Exit 0 under TOKEN_BUDGET_WARN_PCT (default 70), 3 from there, 4 at 100%. Silent exit 0 when no budget or no data.
@@ -232,7 +234,7 @@ case "$cmd" in
       esac
       shift
     done
-    [ "${USAGE_LOG:-}" = 1 ] || [ "$force" = 1 ] || exit 0
+    [ "${USAGE_LOG:-}" = 1 ] || [ "${USAGE_LINE:-}" = 1 ] || [ "$force" = 1 ] || exit 0
     [ -n "$role" ] || { echo "--role is required" >&2; exit 2; }
     case "$origin" in sdk|observed) ;; *) echo "--origin must be sdk or observed" >&2; exit 2 ;; esac
     case "$kind" in snapshot|final) ;; *) echo "--kind must be snapshot or final" >&2; exit 2 ;; esac
@@ -246,6 +248,54 @@ case "$cmd" in
        + (if ($cest | test("^[0-9]+([.][0-9]+)?$")) then {cost_est_usd:($cest | tonumber), cost_src:"host-estimate"} else {} end)')" || { echo "usage.sh: bad number in an argument" >&2; exit 2; }
     # agents finish at the same time: the replace-then-append runs under a lock, or lines of parallel agents are lost
     log_line "$line" "$file" ;;
+  live)   # the open task's running totals for the developer's step line (USAGE_LINE=1). A READER of the ledger: no second store.
+    sub="${1:-}"; [ $# -gt 0 ] && shift
+    role=""; slug=""; fmt="line"
+    while [ $# -gt 0 ]; do
+      case "$1" in --role) role="$2"; shift ;; --slug) slug="$2"; shift ;; --line) fmt=line ;; --json) fmt=json ;; *) echo "unknown option $1" >&2; exit 2 ;; esac
+      shift
+    done
+    [ -n "$slug" ] || slug="$(current_slug)"; file="$work/$slug/usage.jsonl"
+    case "$sub" in
+      show)   # --role R limits to one role; without it: the orchestrator's own share and the task total
+        agg() { jq -Rs --arg r "$1" '[split("\n")[] | (try fromjson catch empty) | select(type == "object" and ($r == "" or .role == $r))] as $rows
+          | [$rows[] | select((.tq // "actual") != "unavailable")] as $m
+          | {runs: ($m | map(.id) | unique | length), unmeasured: ([$rows[] | select((.tq // "actual") == "unavailable") | .id] | unique | length),
+             in: ($m | map(.in // 0) | add // 0), out: ($m | map(.out // 0) | add // 0), cache_read: ($m | map(.cache_read // 0) | add // 0), cache_write: ($m | map(.cache_write // 0) | add // 0)}' "$file" 2>/dev/null; }
+        frag() { jq -r 'def k: if . >= 1000 then ((. / 100 | round) / 10 | tostring) + "k" else tostring end;
+          (.in + .cache_read + .cache_write) as $t
+          | (if .unmeasured > 0 then ", \(.unmeasured) run(s) not measured (host gave no token data)" else "" end) as $um
+          | if .runs == 0 then "not measured" + (if .unmeasured > 0 then " (host gave no token data)" else "" end)
+            else "in \($t | k) (fresh \(.in | k), cache read \(.cache_read | k), cache write \(.cache_write | k)), out \(.out | k), hit \(if $t > 0 then "\(.cache_read * 100 / $t | floor)%" else "n/a" end)" + $um end' <<< "$1"; }
+        if [ ! -f "$file" ]; then
+          [ "$fmt" = json ] && echo '{"runs":0}' || echo "usage not available (nothing recorded yet)"; exit 0
+        fi
+        if [ "$fmt" = json ]; then jq -nc --argjson a "$(agg "$role")" --argjson t "$(agg "")" '{role: $a, task: $t}'
+        elif [ -n "$role" ]; then echo "$role: $(frag "$(agg "$role")")"
+        else echo "orchestrator: $(frag "$(agg orchestrator)") | task total: $(frag "$(agg "")")"; fi ;;
+      pull)   # a host without a usage hook: read the orchestrator's share from the host's own transcript, once per call. Only Codex so far: its rollout files
+              # carry cumulative total_token_usage, so the task's share is the last reading minus the last one before the task started.
+        start="$("$0" window 2>/dev/null)"; [ -n "$start" ] || exit 0
+        [ -f "$file" ] && jq -Rs -e '[split("\n")[] | (try fromjson catch empty) | select(type == "object" and .role == "orchestrator" and .host == "claude")] | length > 0' "$file" >/dev/null 2>&1 && exit 0   # the Claude hook already feeds it
+        cdir="${CODEX_HOME:-$HOME/.codex}/sessions"; [ -d "$cdir" ] || exit 0
+        rf=""
+        while IFS= read -r f; do
+          [ "$(head -1 "$f" 2>/dev/null | jq -r 'select(.type == "session_meta") | .payload.cwd // empty' 2>/dev/null)" = "$top" ] && { rf="$f"; break; }
+        done < <(find "$cdir" -name 'rollout-*.jsonl' -mtime -3 2>/dev/null | xargs ls -t 2>/dev/null | head -30)
+        [ -n "$rf" ] || exit 0
+        d="$(jq -s --arg st "$start" '
+          [ .[] | select(.type == "event_msg" and .payload.type == "token_count" and .payload.info != null) | {ts: (.timestamp | sub("\\.[0-9]+"; "")), u: .payload.info.total_token_usage} ] as $ev
+          | ([ $ev[] | select(.ts < $st) ] | last // {u: {}}) .u as $b | ($ev | last // null) as $c | ([.[] | select(.type == "turn_context") | .payload.model] | last // "") as $mdl
+          | if $c == null then empty else
+              def d(f): (($c.u[f] // 0) - ($b[f] // 0));
+              {model: $mdl, sid: ([.[] | select(.type == "session_meta") | .payload.id] | first // ""), out: d("output_tokens"),
+               cr: d("cached_input_tokens"), cw: d("cache_write_input_tokens"), inall: d("input_tokens")}
+              | .in = ([.inall - .cr - .cw, 0] | max) end' "$rf" 2>/dev/null)" || exit 0
+        [ -n "$d" ] || exit 0
+        "$0" log --role orchestrator --host codex --model "$(jq -r .model <<< "$d")" --session "$(jq -r .sid <<< "$d")" --id "codex-$(jq -r .sid <<< "$d")" --kind snapshot --source pull \
+          --in "$(jq -r .in <<< "$d")" --out "$(jq -r .out <<< "$d")" --cache-read "$(jq -r .cr <<< "$d")" --cache-write "$(jq -r .cw <<< "$d")" --slug "$slug" >/dev/null 2>&1 || true ;;
+      *) echo "usage: usage.sh live show|pull [--role R] [--slug S] [--json]" >&2; exit 2 ;;
+    esac ;;
   window)   # the start of the open task (ISO UTC), or nothing: where its share of a cumulative session transcript begins
     slug="$(current_slug)"; sf="$top/$KIT_DIR/.sdd/state.json"
     [ -f "$sf" ] && jq -r --arg s "$slug" 'select(.task == $s) | .startedAt // empty' "$sf" 2>/dev/null | head -1 ;;

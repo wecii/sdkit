@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # SubagentStop / Stop: append token usage from the transcript to the ledger (scripts/usage.sh) and, with TELEMETRY=1, an agent.end event
 # (scripts/telemetry.sh). Off unless USAGE_LOG=1 or TELEMETRY=1. Never blocks: any problem (no transcript, unexpected shape) is a silent exit 0.
-# With USAGE_LINE=1, SubagentStop also prints one line to the developer: "[sdkit] <role> done — in: 12.4k, out: 1.8k, cache hit: 71%"
+# With USAGE_LINE=1, SubagentStop also prints one line to the developer: "[sdkit] <role> done — in: 12.4k (cache read 8.8k, write 0.9k), out: 1.8k, cache hit: 71%"
 # (or "token usage not available" when the transcript gives no numbers: never a wrong number). Independent of USAGE_LOG.
+# USAGE_LINE=1 also switches the ledger on (usage.sh log), because the step line that sdd.sh prints at each phase move reads it (usage.sh live show).
 . "$(dirname "$0")/lib.sh"
 [ "${USAGE_LOG:-}" = 1 ] || [ "${TELEMETRY:-}" = 1 ] || [ "${USAGE_LINE:-}" = 1 ] || exit 0
 event="$(jget .hook_event_name)"; session="$(jget '.session_id // empty')"
@@ -14,7 +15,7 @@ usage_line() {
   else
     msg="$(awk -v r="$1" -v i="$2" -v o="$3" -v cr="$4" -v cw="$5" 'function k(n) { return n >= 1000 ? sprintf("%.1fk", n / 1000) : n }
       BEGIN { t = i + cr + cw; h = t > 0 ? sprintf("%d%%", cr * 100 / t) : "n/a"
-        printf "[sdkit] %s done — in: %s, out: %s, cache hit: %s", r, k(i + cr + cw), k(o), h }')"
+        printf "[sdkit] %s done — in: %s (cache read %s, write %s), out: %s, cache hit: %s", r, k(i + cr + cw), k(cr), k(cw), k(o), h }')"
   fi
   jq -n --arg m "$msg" '{systemMessage:$m}'
 }
@@ -23,6 +24,16 @@ usage_line() {
 [ "$event" != SubagentStop ] && [ -n "${SDKIT_CHILD_RUN:-}" ] && exit 0
 script="$(kit_cmd "" "scripts/usage.sh")"; [ -x "$script" ] || script="$PROJECT_DIR/$KIT_DIR/scripts/usage.sh"
 [ -x "$script" ] || exit 0
+# ledger_put <role> <id> <kind> <extract json>: one ledger line per model used (a session that switches model is priced per model); same id, so a
+# later snapshot replaces its own earlier one
+ledger_put() {
+  local r="$1" i="$2" k="$3" x="$4" m mi mo mcr mcw
+  while IFS="$(printf '\t')" read -r m mi mo mcr mcw; do
+    [ "$m" = - ] && m=""
+    "$script" log --role "$r" --host claude --model "$m" --provider "$provider" --session "$session" --in "$mi" --out "$mo" --cache-read "$mcr" --cache-write "$mcw" \
+      ${i:+--id "$i"} --kind "$k" --source "$event" >/dev/null 2>&1
+  done < <(jq -r '(.by_model | if length == 0 then [{model:"",in:0,out:0,cache_read:0,cache_write:0}] else . end)[] | [(.model | if . == "" then "-" else . end), .in, .out, .cache_read, .cache_write] | @tsv' <<< "$x")
+}
 if [ "$event" = SubagentStop ]; then
   # the subagent's OWN transcript only. The parent's transcript (`.transcript_path`) is never a fallback: it would book the whole session under this
   # agent. Where the payload has no agent path, Claude Code keeps it at <session transcript without .jsonl>/subagents/agent-<id>.jsonl.
@@ -65,10 +76,13 @@ if [ "${TELEMETRY:-}" = 1 ]; then
   [ -x "$tele" ] && "$tele" emit agent.end --role "$role" --host claude --model "${model:-}" --in "$i" --out "$o" --cache-read "$cr" --cache-write "$cw" \
     --tool-calls "${1:-}" --dur-ms "${2:-}" --q tokens=actual --q tool_calls=actual --q duration=estimated ${id:+--span "$id"} --source "$event" >/dev/null 2>&1
 fi
-# one ledger line per model used (a session that switches model is priced per model); same id, so a later snapshot replaces its own earlier one
-while IFS="$(printf '\t')" read -r m mi mo mcr mcw; do
-  [ "$m" = - ] && m=""
-  "$script" log --role "$role" --host claude --model "$m" --provider "$provider" --session "$session" --in "$mi" --out "$mo" --cache-read "$mcr" --cache-write "$mcw" \
-    ${id:+--id "$id"} --kind "$kind" --source "$event" >/dev/null 2>&1
-done < <(jq -r '(.by_model | if length == 0 then [{model:"",in:0,out:0,cache_read:0,cache_write:0}] else . end)[] | [(.model | if . == "" then "-" else . end), .in, .out, .cache_read, .cache_write] | @tsv' <<< "$ex")
+ledger_put "$role" "$id" "$kind" "$ex"
+# a subagent just ended: refresh the orchestrator's own row from the parent transcript too, so a phase move right after it shows current numbers
+# (the step line reads this ledger; without it the orchestrator would be one turn old)
+if [ "${USAGE_LINE:-}" = 1 ] && [ "$event" = SubagentStop ]; then
+  ptr="$(jget '.transcript_path // empty')"
+  if [ -n "$ptr" ] && [ -f "$ptr" ] && px="$("$script" extract "$ptr" --since "$("$script" window 2>/dev/null)" 2>/dev/null)" && [ -n "$px" ]; then
+    ledger_put orchestrator "session-$session" snapshot "$px"
+  fi
+fi
 exit 0

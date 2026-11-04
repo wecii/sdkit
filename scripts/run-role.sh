@@ -297,7 +297,7 @@ if [ "${USAGE_LINE:-}" = 1 ]; then   # the same one-line summary the Claude Suba
   if [ "$tq" = actual ]; then
     awk -v r="$role" -v i="${tin:-0}" -v o="${tout:-0}" -v cr="${cr:-0}" -v cw="${cw:-0}" -v h="$host" 'function k(n) { return n >= 1000 ? sprintf("%.1fk", n / 1000) : n }
       BEGIN { t = i + cr + cw; c = (h == "claude" || h ~ /^ext:/) && t > 0 ? sprintf("%d%%", cr * 100 / t) : "n/a"
-        printf "[sdkit] %s done — in: %s, out: %s, cache hit: %s\n", r, k(t), k(o), c }' >&2
+        printf "[sdkit] %s done — in: %s%s, out: %s, cache hit: %s\n", r, k(t), (c == "n/a" ? "" : sprintf(" (cache read %s, write %s)", k(cr), k(cw))), k(o), c }' >&2
   else echo "[sdkit] $role done — token usage not available ($host gave no data)" >&2; fi
 fi
 erc=0; prc=""; rdur="$dur"

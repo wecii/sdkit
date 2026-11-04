@@ -40,7 +40,10 @@ check   "advance proposed"         "$SDD" advance proposed
 is "src edit denied (test-first)"  deny  "$(hook guard-phase.sh "$(edit src/app.go)")"
 is "test edit allowed"             allow "$(hook guard-phase.sh "$(edit src/app_test.go)")"
 nocheck "passing tests are not RED" "$SDD" advance red --test-cmd true
-check   "failing tests are RED"    sdd_red
+mkdir -p .sdkit/work/t1; "$KIT/scripts/usage.sh" log --role orchestrator --host claude --id session-s --in 5 --out 7 --cache-read 90 --cache-write 5 --slug t1 --kind final --force
+red_err="$(USAGE_LINE=1 sdd_red 2>&1 >/dev/null)"
+is "failing tests are RED"    red "$("$SDD" task 2>/dev/null | jq -r .phase 2>/dev/null || jq -r .phase .sdkit/.sdd/state.json)"
+is "USAGE_LINE=1: a phase move prints the running totals" "usage: orchestrator: in 100 (fresh 5, cache read 90, cache write 5), out 7, hit 90% | task total: in 100 (fresh 5, cache read 90, cache write 5), out 7, hit 90%" "$(grep '^usage:' <<< "$red_err")"
 is "src edit allowed in red"       allow "$(hook guard-phase.sh "$(edit src/app.go)")"
 nocheck "still failing, no green"  "$SDD" advance green
 echo 'package src' > src/app.go
