@@ -224,3 +224,7 @@ Nothing changes until you opt in; every new setting is off or empty by default.
 
 No manual step for projects. `recover.sh` now reads file times correctly on Linux (GNU `stat`), so `sdkit recover` works there too.
 For people working on the kit: the whole suite takes about 15 s. `tests/slow/` is gone (the long versions are kept in `tests/old/` as a reference and never run); every area has a short test in `tests/`. `tests/fast.sh` runs inside a Debian container by default (`tests/docker/Dockerfile`), `tests/fast.sh --no-docker` runs on the machine, and `--all` no longer exists. The kit's jq programs need jq 1.8 or newer, and `redact.sh` needs an `awk` that supports `{n}` repetition (gawk, not mawk).
+
+## 1.4.1: who logs a step, and its token usage
+
+No manual step. With `USAGE_LINE=1` (personal setting) the step lines name the orchestrator and carry its and the task's running token usage (in, cache read, cache write, out, hit ratio); `USAGE_LINE=1` now also switches the usage ledger on, so `USAGE_LOG` is not needed for it. Subagent lines show cache read and write too. On Codex the orchestrator's share is read from its rollout file; hosts that give no token data show `not measured`.

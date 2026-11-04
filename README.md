@@ -2,7 +2,7 @@
 
 **Make your coding agent follow a real engineering process, enforced by scripts instead of left to its good intentions.**
 
-![Version 1.4.0](https://img.shields.io/badge/version-1.4.0-blue)
+![Version 1.4.1](https://img.shields.io/badge/version-1.4.1-blue)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue)
 ![Hosts: Claude Code | Codex | OpenCode | Cursor | Gemini CLI](https://img.shields.io/badge/hosts-Claude%20Code%20%C2%B7%20Codex%20%C2%B7%20OpenCode%20%C2%B7%20Cursor%20%C2%B7%20Gemini%20CLI-informational)
 

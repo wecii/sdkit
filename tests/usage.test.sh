@@ -175,9 +175,38 @@ eq "orchestrator + analyst are both accounted"                           "$(jv '
 echo "the usage line (USAGE_LINE=1)"
 um() { USAGE_LINE=1 stop "$@" | jq -r '.systemMessage // empty'; }
 { asst sl1 m-a 1800 u1 8000; } > "$sess/main/subagents/agent-ag2.jsonl"
-eq "a finished subagent prints in, out and cache hit"                    "$(um "$sess/main/subagents/agent-ag2.jsonl" ag2 spec-driven-kit:verifier)" "[sdkit] verifier done — in: 8.0k, out: 1.8k, cache hit: 99%"
+eq "a finished subagent prints in, out and cache hit"                    "$(um "$sess/main/subagents/agent-ag2.jsonl" ag2 spec-driven-kit:verifier)" "[sdkit] verifier done — in: 8.0k (cache read 8.0k, write 10), out: 1.8k, cache hit: 99%"
 eq "an unreadable transcript says so instead of showing numbers"        "$(um "" agNone verifier)" "[sdkit] verifier done — token usage not available (the host gave no data)"
 eq "off unless USAGE_LINE=1"                                             "$(stop "$sess/main/subagents/agent-ag2.jsonl" ag2 verifier)" ""
+
+echo "running totals of the task (usage.sh live): read from the ledger, no second store"
+rm -f .sdkit/work/*/usage.jsonl; rm -f .sdkit/work/*/usage-live.jsonl
+USAGE_LINE=1 stop "$sess/main/subagents/agent-ag2.jsonl" ag2 spec-driven-kit:verifier >/dev/null
+lf="$(ls .sdkit/work/*/usage.jsonl | head -1)"
+eq "a subagent end refreshes the orchestrator's row too (verifier + orchestrator)" "$(jq -rs 'map(.role)|unique|join(",")' "$lf")" "orchestrator,verifier"
+eq "no second store is written"                                          "$(ls .sdkit/work/*/usage-live.jsonl 2>/dev/null | wc -l | tr -d ' ')" 0
+n1="$(grep -c . "$lf")"; USAGE_LINE=1 turn >/dev/null
+eq "a turn end replaces the orchestrator row, never double counts"       "$(grep -c . "$lf")" "$n1"
+eq "show --role: the verifier's own share, with cache write and hit"     "$("$US" live show --role verifier)" "verifier: in 8k (fresh 2, cache read 8k, cache write 10), out 1.8k, hit 99%"
+eq "show: the task total is more than one role's share"                  "$("$US" live show --role verifier --json | jq -r '[.task.runs, (.task.out > .role.out)] | join(",")')" "2,true"
+eq "no ledger: says so instead of showing numbers"                       "$("$US" live show --slug nope)" "usage not available (nothing recorded yet)"
+"$US" log --role developer --host codex --id cx1 --tq unavailable --slug h1 --force
+eq "a run the host gave no token data for is counted as not measured"    "$("$US" live show --role developer --slug h1)" "developer: not measured (host gave no token data)"
+
+echo "live pull: Codex orchestrator from its rollout file"
+cdx="$T/codex/sessions/2026/03/01"; mkdir -p "$cdx"; rm -f .sdkit/work/*/usage.jsonl
+R="$(newrepo pull)"; cd "$R" || exit 1; export CLAUDE_PROJECT_DIR="$R"; mkdir -p .sdkit/work/p1 .sdkit/.sdd; echo '{}' > .sdkit/work/p1/state.json
+printf '{"task":"p1","startedAt":"2026-03-01T10:00:00Z"}' > .sdkit/.sdd/state.json
+cr_line() { jq -nc --arg ts "$1" --argjson i "$2" --argjson c "$3" --argjson o "$4" '{type:"event_msg",timestamp:$ts,payload:{type:"token_count",info:{total_token_usage:{input_tokens:$i,cached_input_tokens:$c,cache_write_input_tokens:0,output_tokens:$o}}}}'; }
+{ jq -nc --arg c "$R" '{type:"session_meta",timestamp:"2026-03-01T09:00:00.000Z",payload:{id:"cxs1",cwd:$c}}'; jq -nc '{type:"turn_context",timestamp:"2026-03-01T09:00:01.000Z",payload:{model:"gpt-x"}}'
+  cr_line 2026-03-01T09:30:00.000Z 1000 800 100; cr_line 2026-03-01T10:30:00.000Z 5000 4000 600; } > "$cdx/rollout-2026-03-01T09-00-00-cxs1.jsonl"
+CODEX_HOME="$T/codex" USAGE_LINE=1 "$US" live pull
+eq "pull: the task's share is the last reading minus the one before it started" "$("$US" live show --role orchestrator)" "orchestrator: in 4k (fresh 800, cache read 3.2k, cache write 0), out 500, hit 80%"
+CODEX_HOME="$T/codex" USAGE_LINE=1 "$US" live pull
+eq "pull again: replaced by its own id, not added"                        "$(grep -c . .sdkit/work/p1/usage.jsonl)" 1
+printf '{"task":"p1","startedAt":"2026-03-01T10:00:00Z"}' > .sdkit/.sdd/state.json; rm -f .sdkit/work/p1/usage.jsonl
+CODEX_HOME="$T/none" "$US" live pull
+eq "pull: no Codex sessions, nothing invented"                           "$("$US" live show --role orchestrator)" "usage not available (nothing recorded yet)"
 
 echo "scan: sessions the hooks never saw"
 tr="$T/proj"; mkdir -p "$tr/sessA/subagents"
