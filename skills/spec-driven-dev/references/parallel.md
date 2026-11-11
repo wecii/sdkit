@@ -24,9 +24,10 @@ Use parallel only if all hold: risk is `medium` or `high`, at least two tasks ha
 | `test-writer` ‖ `developer` on one DoD item | Only when the test and the interface are fixed in the plan first; the developer must not edit the tests |
 | `developer` ‖ `developer` | Disjoint `writes:` only |
 | `developer` ‖ `devsecops` | Source vs pipeline/infra files |
-| `reviewer` ‖ `security-auditor` | Both read-only on the same final diff |
+| `verifier` ‖ `reviewer` ‖ `security-auditor` | All read-only on the same final diff, none sees the others' output (`high`; `MAX_PARALLEL` must allow it, else the verifier and one reviewer first) |
+| `analyst` ‖ `scout` | Intake: the scout answers questions that come from the raw task text, not from the analyst's brief |
 
-Never parallelize: the `verifier` with the implementer, two writers on one file, anything that depends on an unmerged result.
+Never parallelize: the `verifier` with the implementer or any writer, two writers on one file, anything that depends on an unmerged result.
 
 ## Isolation
 Each writing task runs in its own git worktree so nothing collides on disk:
@@ -45,4 +46,4 @@ A task that strays outside its `writes:` set is not merged (`scripts/check-write
 `MAX_PARALLEL` in `<project-dir>/sdkit.env` (default 3) is the most subagents or `run-role.sh` processes running at once. `plan-waves.sh` enforces it when it builds waves; never start more than that, also not for read-only reviewers, unless the user raises it. Each gets a handoff brief (`handoff.md`), not the conversation.
 
 ## Dispatch rules (opt-in, `scripts/dispatch.sh`)
-`PARALLEL=on` (personal `sdkit.local.env`) is required; off by default. `dispatch.sh claim <id> tasks.md` refuses a task that is already active or done, whose `after:` tasks are not done, whose `writes:` overlap an active claim, or when `MAX_PARALLEL` claims are active. `done <id>` after the merge; every recorded verifier/reviewer/auditor PASS is then stale and must be re-run on the merged diff. `release <id>` for an interrupted task. Parallel runs multiply token use: the wall-time saving is not assumed, measure it.
+`PARALLEL` (default `on`; `off` in `sdkit.local.env` makes everything below refuse and tasks run in order). `dispatch.sh claim <id> tasks.md` refuses a task that is already active or done, whose `after:` tasks are not done, whose `writes:` overlap an active claim, or when `MAX_PARALLEL` claims are active. `done <id>` after the merge; every recorded verifier/reviewer/auditor PASS is then stale and must be re-run on the merged diff. `release <id>` for an interrupted task. Parallel runs multiply token use: the wall-time saving is not assumed, measure it.

@@ -378,7 +378,7 @@ well-formed; **it is never a verification**. `high-assurance` makes contracts ma
 
 ### Parallel work
 
-Off by default. `PARALLEL=on` with `dispatch.sh claim|done|release|status` is an idempotent ledger deciding whether a task may start (dependencies done, `writes:`
+On by default (`PARALLEL=off` turns it off). With `dispatch.sh claim|done|release|status` is an idempotent ledger deciding whether a task may start (dependencies done, `writes:`
 disjoint, fewer than `MAX_PARALLEL` active). It starts nothing and claims no time saving. After a merge, every recorded verifier/reviewer/auditor
 PASS is stale until run again on the merged diff.
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Opt-in, idempotent dispatch of parallel tasks (F15). It does not start anything: it is the ledger and the rules that decide whether a task MAY start now.
-#   dispatch.sh claim <task-id> <tasks.md> [--slug S]   take the task: refused unless PARALLEL=on, the task exists, every `after:` task is done,
+# Idempotent dispatch of parallel tasks (F15). It does not start anything: it is the ledger and the rules that decide whether a task MAY start now.
+#   dispatch.sh claim <task-id> <tasks.md> [--slug S]   take the task: refused when PARALLEL=off (on by default), the task exists, every `after:` task is done,
 #                                                       its `writes:` overlap no active claim, and fewer than MAX_PARALLEL claims are active.
 #                                                       Claiming a task that is already active or done changes nothing and exits 3 (no duplicate work).
 #   dispatch.sh done <task-id> [--slug S]               mark merged. Prints the stale-evidence reminder (a merge changes the diff, so every recorded
@@ -21,7 +21,7 @@ dir="$top/$KIT_DIR/work/$slug"; L="$dir/dispatch.jsonl"; max="${MAX_PARALLEL:-3}
 state() { [ -f "$L" ] && jq -sc 'group_by(.task) | map({task: .[0].task, state: (last.event | if . == "claim" then "active" elif . == "done" then "done" else "free" end), writes: (map(select(.event == "claim")) | last.writes // "")})' "$L" || echo '[]'; }
 case "$cmd" in
   claim)
-    [ "${PARALLEL:-off}" = on ] || { echo "parallel dispatch is off (PARALLEL=on in $KIT_DIR/sdkit.local.env to opt in); run tasks in order" >&2; exit 4; }
+    [ "${PARALLEL:-on}" = on ] || { echo "parallel dispatch is off (PARALLEL=off in the settings); run tasks in order" >&2; exit 4; }
     [ -n "$id" ] && [ -f "$tasks" ] || { echo "usage: dispatch.sh claim <task-id> <tasks.md>" >&2; exit 2; }
     line="$(grep -E "^[[:space:]]*- \[[ xX]\] +$id([[:space:]]|\$)" "$tasks" | head -1)"; [ -n "$line" ] || { echo "refused: task $id is not in $tasks" >&2; exit 3; }
     field() { printf '%s\n' "$line" | tr '|' '\n' | sed -n "s/^[[:space:]]*$1:[[:space:]]*//p" | head -1 | tr -d ' '; }

@@ -18,18 +18,25 @@ design, test strategy and task split. For `low` the orchestrator drafts all of i
 7. **Risks and rollout**: what could go wrong, release constraints, what the user must do after merge.
 8. **Decision log**: every change the user makes at this gate, one line each.
 
-## Asking (detailed, but batched)
-Use the host's question tool (`AskUserQuestion` in Claude Code, a plain numbered question elsewhere). At most 4 questions per round. Each
+## Asking (detailed, one decision per question)
+Use the host's question tool (`AskUserQuestion` in Claude Code, a plain numbered question elsewhere). At most 4 questions per round, as many rounds as it takes. Each
 question quotes the section text it is about, offers `Approve` / concrete alternatives, and the user can always answer free-form.
 Never ask what the code or the task already answers; put a recommended option first.
+
+- **One decision per question.** If a question contains "and", "or whether" or a second condition, split it. A DoD item, an assumption, a design choice, a task split and a size are each their own question; never fold a nested question into the option text ("approve, but also decide X").
+- **Ask everything you can think of.** Before a round, list every decision the section hides: each open assumption, each DoD item's Verified-by, each rejected alternative, ordering and rollback, error and empty cases, what is out of scope, who runs the post-merge steps. Ask them all, in more rounds if needed; a question asked now costs a line, an answer missing at verify costs a retry. Skip only what the code or the task already answers.
+- **Order from the root.** Ask a decision that changes the others (scope, design) before the ones that depend on it (tasks, sizes), and say when a later question depends on an earlier answer.
+- **Name each question.** The `header` is the item (`D3 retry`, `A2 cache TTL`), the text says what changes if the answer differs.
 
 Rounds, by risk label:
 
 | Risk | Rounds |
 |---|---|
-| `low` | One round: sections 1, 3 and 5 together, then the final confirmation |
+| `low` | Sections 1, 3 and 5, one question per item (batched 4 at a time), then the final confirmation |
 | `medium` | A: 1+2 · B: 3 (DoD and test strategy, item by item) · C: 5+6 · final confirmation |
 | `high` | A: 1+2 · B: 3 · C: 4 (design, race scenario) · D: 5+6 · E: 7 · final confirmation |
+
+A section with more than 4 decisions takes more than one round.
 
 ## Updating
 - After every answer, apply it to `plan.md` and log it in section 8.

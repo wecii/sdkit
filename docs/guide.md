@@ -149,11 +149,11 @@ At `medium`/`high` risk the `engineer` role prepares the draft design, test stra
 Plan sections: scope and out of scope · assumptions and open questions · **DoD (each item with "Verified by")** · design (rejected alternatives, race scenario for `high`) ·
 execution plan (tasks, waves, roles) · cost shape (size, number of agent runs; no made-up token counts) · risks and rollout · decision log.
 
-How it asks: in rounds, at most 4 questions per round; each question quotes the relevant text and offers `Onayla` and concrete alternatives; a free-form answer is always possible.
+How it asks: in rounds, at most 4 questions per round, as many rounds as needed; one decision per question (no nested questions; it splits them) and every decision the section hides is asked; each question quotes the relevant text and offers `Onayla` and concrete alternatives; a free-form answer is always possible.
 
 | Risk | Rounds |
 |---|---|
-| `low` | One round (scope + DoD + execution), then final approval |
+| `low` | Scope + DoD + execution, one question per item, then final approval |
 | `medium` | Scope/assumptions · DoD and test strategy item by item · execution and cost · final approval |
 | `high` | In addition to the above, a design and race scenario round and a risks/rollout round · final approval |
 
@@ -182,7 +182,7 @@ can be done in a single session. Independent tasks can run in parallel (section 
 |---|---|
 | **low** | Write a test from the DoD → RED → implement → GREEN → verify → PR. No separate verifier |
 | **medium** | Same as low + **mandatory independent verification** (Step 5) |
-| **high** | Three separate roles: **[A]** `test-writer` (regression test against real infrastructure; sees RED; adds the test file to the `<project-dir>/.frozen` list), **[B]** `developer` (gets the frozen test but cannot change it; only brings it to GREEN), **[C]** `verifier`. Plus `reviewer` + `security-auditor` (in parallel, read-only) |
+| **high** | Three separate roles: **[A]** `test-writer` (regression test against real infrastructure; sees RED; adds the test file to the `<project-dir>/.frozen` list), **[B]** `developer` (gets the frozen test but cannot change it; only brings it to GREEN), **[C]** `verifier`. Plus `reviewer` + `security-auditor`, started together with the verifier (all read-only) |
 
 At `high` risk the roles are started fresh, not with `fork`; that way B does not inherit A's "what the solution should look like" framing.
 
@@ -554,7 +554,7 @@ Task and session value report: roles/models, token categories, API-equivalent co
 ### Phase F12-F20 scripts (short)
 - `adapter.sh capabilities|usage|cancel|status|validate <host|ext:ad>`: the execution adapter contract; an unsupported capability honestly says "unsupported" (exit 3). Details: [design-adapters.md](design-adapters.md). `adapters.d/litellm.sh`: optional, text-only, off by default.
 - `route.sh` + `ROUTE_COST_ENFORCE=hard`: hard cost policy, reservation, unknown = does not pass ([design-routing.md](design-routing.md) F14).
-- `dispatch.sh claim|done|release|status`: optional (`PARALLEL=on`) idempotent parallel dispatch; dependency, write conflict, `MAX_PARALLEL`.
+- `dispatch.sh claim|done|release|status`: idempotent (`PARALLEL`, on by default) parallel dispatch; dependency, write conflict, `MAX_PARALLEL`.
 - `knowledge.sh put|get|list|clear`: task notes tied to the file content hash; independent roles are refused.
 - `telemetry.sh trace`: task → phase → role → execution → request trace, no content ([design-telemetry.md](design-telemetry.md) F17).
 - `recover.sh scan|apply`: safely and idempotently closes half-finished record jobs; does not rerun anything, does not touch a BLOCK.
@@ -881,10 +881,10 @@ wave 3: T4(test-writer)      # write path overlaps with T2, moved later
 ```
 
 Safe parallel pairs: `test-writer ‖ developer` (if the test and interface are fixed in the plan; the developer cannot change the test) · two `developer`s with disjoint `writes:` · `developer ‖ devsecops` ·
-`reviewer ‖ security-auditor` (both read-only). **Never:** `verifier` with the implementer, two writers on the same file, work that depends on an unmerged result.
+`verifier ‖ reviewer ‖ security-auditor` (`high`, all read-only, none sees another's output) · `analyst ‖ scout` at intake. **Never:** `verifier` with the implementer, two writers on the same file, work that depends on an unmerged result.
 
 Isolation **belongs to the kit**, it does not depend on the host's native worktree feature (so it works the same on every host): every writing task runs in its own worktree (`worktree.sh add T3`), its path is taken with `worktree.sh path T3` and written into the handoff as `WORKTREE:`, and the role reads/writes only under that path; if the host cannot pin the role to a directory, `run-role.sh --cwd` is used. The orchestrator merges wave by wave: `worktree.sh merge T3 tasks.md` first checks with `check-writes.sh` whether the task went outside its `writes:` set (if it did, it does not merge), then merges; after every merge it runs `verify --fast` and only then moves on to the next wave.
-At `high` risk reviewer and security-auditor run in parallel (plus host skills if `EXTRA_REVIEW_SKILLS` is set). A merge conflict means the write sets were wrong: stop, tell the user, fix the plan. At most `MAX_PARALLEL` (default 3) subagents at the same time: `plan-waves.sh` splits a larger wave, and tasks that do not fit move to the next wave.
+At `high` risk reviewer and security-auditor start in the same message as the verifier (plus host skills if `EXTRA_REVIEW_SKILLS` is set). A merge conflict means the write sets were wrong: stop, tell the user, fix the plan. At most `MAX_PARALLEL` (default 3) subagents at the same time: `plan-waves.sh` splits a larger wave, and tasks that do not fit move to the next wave.
 
 ---
 

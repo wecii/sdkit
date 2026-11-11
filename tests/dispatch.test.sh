@@ -15,8 +15,9 @@ cat > "$T/tasks.md" <<'X'
 - [ ] T5 glue | role: developer | writes: src/glue/ | after: T1,T2
 - [ ] T6 lookup | role: scout | after:
 X
-eq "off by default (exit 4)"                         "$(rc "$DP" claim T1 "$T/tasks.md")" 4
-echo 'PARALLEL=on' >> .sdkit/sdkit.local.env
+echo 'PARALLEL=off' >> .sdkit/sdkit.local.env
+eq "PARALLEL=off refuses (exit 4)"                      "$(rc "$DP" claim T1 "$T/tasks.md")" 4
+sed -i.bak '/^PARALLEL=/d' .sdkit/sdkit.local.env; rm -f .sdkit/sdkit.local.env.bak
 eq "a claim succeeds"                                "$(rc "$DP" claim T1 "$T/tasks.md")" 0
 eq "claiming it again is refused, nothing changes"   "$(rc "$DP" claim T1 "$T/tasks.md")" 3
 eq "…and wrote no second claim line"                 "$(wc -l < .sdkit/work/_misc/dispatch.jsonl | tr -d ' ')" 1
