@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Install the kit's project side into a repo. Run once, by whoever sets a repo up; developers who clone it do nothing.
-# Usage: init.sh [--install-openspec] [--ci bitbucket|github|gitlab] [--host claude[,codex,opencode,cursor,gemini]] [--dir NAME] [--mode plugin|copy] [--stack go|spring-boot|jvm|python|nextjs|react-native|generic] [--no-memory] [--memory-vcs commit|ignore] [--force] [--marketplace-url URL] [target-dir]
+# Usage: init.sh [--install-openspec] [--ci bitbucket|github|gitlab] [--host claude[,codex,opencode,cursor,gemini]] [--dir NAME] [--mode plugin|copy] [--stack go|spring-boot|jvm|python|nextjs|react-native|generic] [--no-memory] [--memory-vcs commit|ignore] [--env standalone|analyst|developer] [--force] [--marketplace-url URL] [target-dir]
+#   --env analyst|developer  the install persona, kept in sdkit.env as SDKIT_ENV (default standalone = today's behaviour; an existing value is kept).
+#                     analyst: a project-specs repo (no stack, no openspec, git-ignored pre-spec dir); developer: a source repo with specs/ as a submodule
 #   --host claude     (default) Claude Code
 #   The project-side directory (sdkit.env, project.md, rules, memory, scripts ...) is .sdkit/ for every host. It is committed except what
 #   is personal or generated (its .gitignore). A repo set up before 1.0 keeps its .claude/.codex/.agentkit with project.env until
@@ -28,6 +30,7 @@ MEMORY_ON=1
 MEMORY_VCS=""
 FORCE=0
 MARKETPLACE_URL=""
+ENV_REQ=""
 TARGET="$PWD"
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -36,6 +39,7 @@ while [ $# -gt 0 ]; do
     --mode) MODE="$2"; shift ;;
     --stack) STACK="$2"; shift ;;
     --marketplace-url) MARKETPLACE_URL="$2"; shift ;;
+    --env) ENV_REQ="${2:-}"; shift ;;
     --force) FORCE=1 ;;
     --ci) CI_HOST="$2"; shift ;;
     --install-openspec) INSTALL_OPENSPEC=1 ;;
@@ -50,6 +54,7 @@ done
 export FORCE MARKETPLACE_URL
 case "$CI_HOST" in ""|bitbucket|github|gitlab) ;; *) say "--ci takes bitbucket, github or gitlab, got '$CI_HOST'"; exit 2 ;; esac
 case "$MEMORY_VCS" in ""|commit|ignore) ;; *) say "--memory-vcs takes commit or ignore, got '$MEMORY_VCS'"; exit 2 ;; esac
+case "$ENV_REQ" in ""|standalone|analyst|developer) ;; *) say "--env takes standalone, analyst or developer, got '$ENV_REQ'"; exit 2 ;; esac
 case "$MODE" in plugin|copy) ;; *) say "--mode must be plugin or copy"; exit 2 ;; esac
 for h in $(printf '%s' "$HOSTS" | tr ',' ' '); do
   case "$h" in claude|codex|opencode|cursor|gemini) ;; *) say "--host takes claude, codex, opencode, cursor and/or gemini, got '$h'"; exit 2 ;; esac
@@ -64,6 +69,13 @@ case "$KIT_DIR" in .sdkit|.agentkit|.claude|.codex) ;; *) say "--dir must be .sd
 export KIT_DIR
 # the settings file keeps its old name in a repo set up before 1.0
 ENV_FILE="$(resolve_kit_env "$TARGET" "$KIT_DIR")"; export KIT_ENV="$ENV_FILE"
+# the install persona: --env, else what sdkit.env already says, else standalone. An existing value is never rewritten (edit sdkit.env by hand to change it).
+cur_env="$(sed -n 's/^SDKIT_ENV=//p' "$TARGET/$KIT_DIR/$ENV_FILE" 2>/dev/null | tail -1 | tr -d "\"' ")"
+case "$cur_env" in ""|standalone|analyst|developer) ;; *) say "SDKIT_ENV='$cur_env' in $KIT_DIR/$ENV_FILE is not standalone, analyst or developer"; exit 2 ;; esac
+if [ -n "$cur_env" ] && [ -n "$ENV_REQ" ] && [ "$cur_env" != "$ENV_REQ" ]; then
+  say "$KIT_DIR/$ENV_FILE already has SDKIT_ENV=$cur_env; init does not rewrite it. Edit the line by hand to switch to $ENV_REQ."; exit 2
+fi
+SDKIT_ENV="${cur_env:-${ENV_REQ:-standalone}}"
 if [ "$KIT_DIR" = .sdkit ]; then CLAUDE_SETTINGS=.claude/settings.local.json; GITIGNORE_TPL=templates/sdkit.gitignore
 else CLAUDE_SETTINGS=.claude/settings.json; GITIGNORE_TPL=templates/claude.gitignore; fi
 # every host but Claude has no plugin to fall back on, so kit scripts and skills are copied into the repo
@@ -77,6 +89,7 @@ command -v jq >/dev/null || { say "jq is required"; exit 1; }
 git -C "$TARGET" rev-parse --git-dir >/dev/null 2>&1 || { say "$TARGET is not a git repository"; exit 1; }
 
 STACKS="go spring-boot react-native jvm nextjs python generic"
+if [ -z "$STACK" ] && [ "$SDKIT_ENV" = analyst ]; then STACK=generic; fi   # a project-specs repo has no stack
 if [ -z "$STACK" ]; then
   for s in $STACKS; do [ -x "$SCAFFOLD_ROOT/stacks/$s/detect.sh" ] && "$SCAFFOLD_ROOT/stacks/$s/detect.sh" "$TARGET" && { STACK="$s"; break; }; done
 fi
@@ -106,7 +119,7 @@ fi
 BASE_BRANCH="${BASE_BRANCH:-main}"
 PROJECT_NAME="$(basename "$TARGET")"
 
-say "spec-driven-kit $SCAFFOLD_VERSION -> $TARGET (host=$HOSTS dir=$KIT_DIR mode=$MODE stack=$STACK base=$BASE_BRANCH)"
+say "spec-driven-kit $SCAFFOLD_VERSION -> $TARGET (host=$HOSTS dir=$KIT_DIR mode=$MODE stack=$STACK base=$BASE_BRANCH${ENV_REQ:+ env=$ENV_REQ})"
 mkdir -p "$TARGET/$KIT_DIR"
 : > "$TARGET/$KIT_DIR/.scaffold-manifest.new"
 
@@ -116,12 +129,18 @@ for f in "$SCAFFOLD_ROOT"/core/rules/*.md "$SCAFFOLD_ROOT"/stacks/$STACK/rules/*
 done
 [ -f "$SCAFFOLD_ROOT/stacks/$STACK/golangci.yml" ] && install_template "stacks/$STACK/golangci.yml" "$KIT_DIR/golangci.yml"
 for f in "$SCAFFOLD_ROOT"/stacks/$STACK/verify.d.example/*; do
+  [ "$SDKIT_ENV" = analyst ] && break   # no verify in a project-specs repo
   [ -f "$f" ] && install_template "stacks/$STACK/verify.d.example/$(basename "$f")" "$KIT_DIR/verify.d/$(basename "$f")"
 done
 
 say "project profile (project-owned: fill in)"
 ENV_NEW=0; [ -f "$TARGET/$KIT_DIR/$ENV_FILE" ] || ENV_NEW=1
+if [ "$ENV_NEW" = 0 ] && [ -n "$ENV_REQ" ] && ! grep -q '^SDKIT_ENV=' "$TARGET/$KIT_DIR/$ENV_FILE"; then
+  # an older file without the key: record the requested persona before add_missing would append the default
+  printf '\n# Install persona: standalone | analyst | developer (set by sdkit init --env)\nSDKIT_ENV=%s\n' "$SDKIT_ENV" >> "$TARGET/$KIT_DIR/$ENV_FILE"
+fi
 install_template templates/sdkit.env "$KIT_DIR/$ENV_FILE"
+[ "$ENV_NEW" = 1 ] && [ "$SDKIT_ENV" != standalone ] && { sed -i.bak -e "s#^SDKIT_ENV=.*#SDKIT_ENV=$SDKIT_ENV#" "$TARGET/$KIT_DIR/$ENV_FILE" && rm -f "$TARGET/$KIT_DIR/$ENV_FILE.bak"; }
 install_template templates/project.md "$KIT_DIR/project.md"
 pitfalls_tpl=templates/known-pitfalls.md; [ -f "$SCAFFOLD_ROOT/stacks/$STACK/known-pitfalls.md" ] && pitfalls_tpl="stacks/$STACK/known-pitfalls.md"
 install_template "$pitfalls_tpl" "$KIT_DIR/known-pitfalls.md"
@@ -158,6 +177,41 @@ if [ "$ENV_NEW" = 0 ]; then
   else add_missing "$ENV_FILE" templates/sdkit.local.env; fi   # a pre-1.0 layout keeps a single file
 elif [ "$MEMORY_ON" = 0 ]; then
   sed -i.bak -e 's#^MEMORY=1$#MEMORY=#' "$TARGET/$KIT_DIR/$ENV_FILE" && rm -f "$TARGET/$KIT_DIR/$ENV_FILE.bak"
+fi
+
+# Persona-only settings are appended when missing (never rewritten), so a standalone file stays as it is.
+env_key() {   # env_key <KEY> <value> <comment>
+  grep -q "^$1=" "$TARGET/$KIT_DIR/$ENV_FILE" && return 0
+  printf '\n# %s\n%s=%s\n' "$3" "$1" "$2" >> "$TARGET/$KIT_DIR/$ENV_FILE"; say "  added  $KIT_DIR/$ENV_FILE: $1 ($SDKIT_ENV)"
+}
+case "$SDKIT_ENV" in
+  developer)
+    env_key SDD_MANAGED on "Managed execution (SDKIT_ENV=developer): tasks come from Jira, approved specs from the read-only submodule below."
+    env_key SPECS_DIR specs "Directory of the approved-specs git submodule (read-only for developers)."
+    env_key TRACKER jira "Issue tracker for managed execution (see the Jira keys further down)."
+    env_key SPEC_REPO "" "Hint: git URL of the project-specs repo to add as the submodule: git submodule add <SPEC_REPO> specs" ;;
+  analyst)
+    env_key PRESPEC_DIR prespec "Git-ignored directory for pre-specs (raw input). Its content is never committed. Default: prespec"
+    env_key SPEC_REVIEW_MAX_ROUNDS 2 "Most review rounds per spec before a human decides. Default: 2" ;;
+esac
+if [ "$SDKIT_ENV" != standalone ]; then
+  # review rubrics per artifact (project-owned: edit freely; existing files are kept)
+  for f in "$SCAFFOLD_ROOT"/templates/review.d/*; do
+    [ -f "$f" ] && install_template "templates/review.d/$(basename "$f")" "$KIT_DIR/review.d/$(basename "$f")"
+  done
+fi
+if [ "$SDKIT_ENV" = analyst ]; then
+  say "pre-spec directory (git-ignored; nothing in it is committed)"
+  ps_dir="$(sed -n 's/^PRESPEC_DIR=//p' "$TARGET/$KIT_DIR/$ENV_FILE" | tail -1 | tr -d "\"' ")"; ps_dir="${ps_dir:-prespec}"
+  case "$ps_dir" in /*|*..*|*[!A-Za-z0-9._/-]*) say "  FAIL   PRESPEC_DIR '$ps_dir' must be a plain relative path inside the repo"; exit 2 ;; esac
+  ps_dir="${ps_dir%/}"
+  if [ ! -e "$TARGET/$ps_dir/README.md" ]; then
+    mkdir -p "$TARGET/$ps_dir" && cp "$SCAFFOLD_ROOT/templates/prespec/README.md" "$TARGET/$ps_dir/README.md" && say "  wrote  $ps_dir/README.md"
+  fi
+  # the project's own .gitignore (the directory is outside the project dir); the whole directory is ignored, so no .gitkeep can be committed
+  if ! grep -qxF "/$ps_dir/" "$TARGET/.gitignore" 2>/dev/null; then
+    printf '\n# pre-specs are working input, never committed (sdkit analyst env)\n/%s/\n' "$ps_dir" >> "$TARGET/.gitignore"; say "  wrote  .gitignore: /$ps_dir/"
+  fi
 fi
 
 # Project memory: on by default for a new setup (sdkit.env MEMORY=1). The entries are the developer's; init only creates INDEX.md and the ignore line.
@@ -205,7 +259,7 @@ install_scripts() {
   for f in "$SCAFFOLD_ROOT"/stacks/$STACK/scripts/*.sh; do install_managed "stacks/$STACK/scripts/$(basename "$f")" "$KIT_DIR/scripts/$(basename "$f")"; done
   [ -f "$SCAFFOLD_ROOT/stacks/$STACK/scripts/steps.sh" ] && grep -q node-lib "$SCAFFOLD_ROOT/stacks/$STACK/scripts/steps.sh" \
     && install_managed "stacks/_node/scripts/node-lib.sh" "$KIT_DIR/scripts/node-lib.sh"
-  for s in env sdd resolve-base open-pr guard plan-waves worktree verify-core verify-lib state parse-verdict check-plan-parity check-writes usage memory lookup-cache run-role route workflow contract telemetry dod-check audit redact digest adapter dispatch knowledge recover test-select pr-check pricing; do
+  for s in env sdd resolve-base open-pr guard plan-waves worktree verify-core verify-lib state parse-verdict check-plan-parity check-writes usage memory lookup-cache run-role route workflow contract telemetry dod-check audit redact digest adapter dispatch knowledge recover test-select pr-check pricing review jira spec tasks; do
     install_managed "scripts/$s.sh" "$KIT_DIR/scripts/$s.sh"
   done
   chmod +x "$TARGET/$KIT_DIR"/scripts/*.sh
@@ -281,13 +335,16 @@ fi
 # OpenSpec is a permanent part of the workflow (explore, propose, sync, archive are its skills). The kit does not
 # vendor it: the CLI comes from npm, and `openspec init` writes its skills for the same hosts as ours.
 say "openspec (required by the workflow)"
-if ! command -v openspec >/dev/null 2>&1 && [ "$INSTALL_OPENSPEC" = 1 ]; then
+if [ "$SDKIT_ENV" = analyst ]; then
+  say "  skipped (analyst env: no openspec in a project-specs repo)"
+elif ! command -v openspec >/dev/null 2>&1 && [ "$INSTALL_OPENSPEC" = 1 ]; then
   if command -v npm >/dev/null 2>&1; then
     say "  installing @fission-ai/openspec (npm install -g)"; npm install -g @fission-ai/openspec >/dev/null 2>&1 || say "  FAIL   npm install -g @fission-ai/openspec did not succeed; install it yourself"
   else say "  FAIL   npm not found: install Node.js first (brew install node), then re-run with --install-openspec"; fi
 fi
 OPENSPEC_PENDING=0
-if command -v openspec >/dev/null 2>&1; then
+if [ "$SDKIT_ENV" = analyst ]; then :
+elif command -v openspec >/dev/null 2>&1; then
   if [ -d "$TARGET/openspec" ]; then
     say "  kept   openspec/ (exists; run 'openspec update' in the repo if its skills are missing for a host)"
   else

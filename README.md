@@ -278,6 +278,20 @@ Adding a stack: [stacks/README.md](stacks/README.md).
 - Pull requests: Bitbucket (REST API), GitHub (`gh`) and GitLab (`glab`). `PR_HOST=auto` picks one from the origin URL ([docs/hosts.md](docs/hosts.md)).
 - `<project-dir>` is `.sdkit/` for every host. Repos set up before 1.0 keep their old directory until `sdkit upgrade --migrate`.
 
+## Analyst and developer environments
+
+`sdkit init --env analyst|developer` picks an experience; without it nothing changes (`SDKIT_ENV=standalone`, the workflow above).
+
+- **analyst** (a specs repo): `/generate-specs` turns a pre-spec into a reviewed spec PR, `/update-specs` changes an approved one, `/generate-tasks` writes Jira subtasks from it. The Tech Lead approves by merging.
+- **developer** (a source repo): `/spec-driven-dev PROJ-123` runs the same phases and gates, but the task and its pinned spec revision come from Jira.
+
+```
+sdkit init --env analyst    # then: /generate-specs onboarding
+sdkit init --env developer  # then: /spec-driven-dev PROJ-123
+```
+
+Seven skills and eleven roles ship in this version. Flows, limits and open decisions: [docs/role-aware.md](docs/role-aware.md).
+
 ## The `sdkit` command
 
 | Command | Does |
@@ -303,6 +317,7 @@ Adding a stack: [stacks/README.md](stacks/README.md).
 |---|---|
 | [docs/README.md](docs/README.md) | Not sure where to start |
 | [docs/developer-workflow.md](docs/developer-workflow.md) | The whole developer journey, from init to Value Report |
+| [docs/role-aware.md](docs/role-aware.md) | Analyst and developer environments, Jira tasks |
 | [docs/cheatsheet.md](docs/cheatsheet.md) | One-page daily reference |
 | [docs/guide.md](docs/guide.md) | Every skill, role, hook, setting, install flow and limit |
 | [docs/upgrading.md](docs/upgrading.md) | Updating projects between kit versions |

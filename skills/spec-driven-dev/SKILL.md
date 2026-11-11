@@ -38,6 +38,10 @@ If `project.md` has no risk rubric, stop and ask the user to define one; never i
 - `<sdd>` is `<kit>/scripts/sdd.sh`, the phase machine (`intake → proposed → red → green → verified → pr → done`). **You never decide that a phase is done: `<sdd> advance` checks the gate itself and refuses when it does not hold.** Hooks and the git hooks ask the same script (`<sdd> gate`) and block code changes, push and PR out of phase (`SDD_MODE` in `sdkit.env`: `strict` is the default and denies, `guided` asks or warns, `off` disables). Never write `<project-dir>/.sdd/` by hand. `state.sh` stays the resume record; `<sdd>` is the gate.
 - `<branch-source>` is the ref new branches are cut from: the "Branch source" rule in `project.md`, defaulting to `<diff-base>`.
 
+## Managed mode (SDD_MANAGED=on)
+
+When `sdkit.env` has `SDD_MANAGED=on` (developer env) the task is a Jira subtask and the approved spec is read-only: read `references/managed.md` now; it replaces steps 0, 1, 3 and 8 below (intake→done mapped to Jira). Open the task with `<sdd> start --ticket <KEY>`; never regenerate the PRD, architecture or spec, never invoke the OpenSpec skills. A spec defect is `<sdd> block --spec-change` (a change request); resume only with `<sdd> revalidate --sha <approved revision>`.
+
 ## 0. Intake: analyst and risk label
 
 **Input**: a ticket ID or a free-text description.

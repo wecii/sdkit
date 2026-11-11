@@ -19,10 +19,11 @@ say "upgrade: $TARGET (project dir $KIT_DIR): kit $FROM -> $SCAFFOLD_VERSION"
 
 HOSTS="$(detect_hosts "$TARGET")"; MODE="$(detect_mode "$TARGET")"
 STACK="$(SDKIT_ENV_QUIET=1; sdkit_env_load_file "$TARGET/$KIT_DIR/$ENV_FILE"; echo "${STACK:-$SDKIT_DEFAULT_STACK}")"
-say "detected: host=$HOSTS mode=$MODE stack=$STACK"
+SDKIT_ENV_KEEP="$(sed -n 's/^SDKIT_ENV=//p' "$TARGET/$KIT_DIR/$ENV_FILE" | tail -1 | tr -d "\"' ")"   # the install persona survives an upgrade
+say "detected: host=$HOSTS mode=$MODE stack=$STACK${SDKIT_ENV_KEEP:+ env=$SDKIT_ENV_KEEP}"
 
 say ""; say "1. new files (existing files are kept)"
-"$SCAFFOLD_ROOT/bin/init.sh" --host "$HOSTS" --mode "$MODE" --stack "$STACK" --dir "$KIT_DIR" "$TARGET" | grep -E '^  wrote' || say "  nothing new"
+"$SCAFFOLD_ROOT/bin/init.sh" --host "$HOSTS" --mode "$MODE" --stack "$STACK" ${SDKIT_ENV_KEEP:+--env "$SDKIT_ENV_KEEP"} --dir "$KIT_DIR" "$TARGET" | grep -E '^  wrote' || say "  nothing new"
 
 # 1.3.2 turned measurement on for new setups (TELEMETRY=1, ROUTING=on). An older project still carries the old defaults (TELEMETRY empty, ROUTING=off), which
 # leaves the Value Report with gaps, so they move once, on the upgrade that crosses 1.3.2. Only those exact old defaults change; any other value is yours.

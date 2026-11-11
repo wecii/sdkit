@@ -32,6 +32,10 @@ config_file = "agents/scout.toml"
 description = "Read-only security auditor for a diff. Looks for auth bypass, IDOR, injection, secret exposure and unsafe input handling. Use on changes to endpoints, middleware, queries or config."
 config_file = "agents/security-auditor.toml"
 
+[agents.spec-reviewer]
+description = "Read-only reviewer of a specification document (PRD, ADR, feature spec) against a rubric. Use when the host runs the spec review through run-role.sh instead of EGM; it never edits the document."
+config_file = "agents/spec-reviewer.toml"
+
 [agents.test-writer]
 description = "Writes tests only, following the project's testing rules. Use to add unit, table-driven or integration tests for a Definition of Done item; it must not change production code."
 config_file = "agents/test-writer.toml"

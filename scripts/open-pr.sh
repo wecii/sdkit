@@ -7,8 +7,19 @@
 #   PR_HOST=gitlab     `glab mr create` (needs glab, authenticated with `glab auth login` or GITLAB_TOKEN).
 #   PR_HOST=auto       picks one of the above from the origin URL (github.com, gitlab.*, bitbucket.org; GH_HOST / GITLAB_HOST for
 #                      self-hosted instances).
+#   --repo-dir D       (first, optional) operate on the repo D instead of the current directory.
+#   --reuse            (optional) if an open PR/MR already exists for the source branch, print its URL and exit 0 instead of creating a second one.
 # Details: the kit's docs/hosts.md.
 set -eu
+REPO_DIR=""; REUSE=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --repo-dir) REPO_DIR="${2:?--repo-dir needs a directory}"; shift 2 ;;
+    --reuse) REUSE=1; shift ;;
+    *) break ;;
+  esac
+done
+[ -z "$REPO_DIR" ] || cd "$REPO_DIR" || { echo "cannot enter $REPO_DIR" >&2; exit 2; }
 ROOT="$(git rev-parse --show-toplevel)"; cd "$ROOT"
 . "$(dirname "${BASH_SOURCE[0]}")/env.sh" || { echo "sdkit: env.sh is missing next to $(basename "$0"): run sdkit upgrade" >&2; exit 1; }; sdkit_env_load "$ROOT"; export KIT_DIR
 PR_HOST="${PR_HOST:-bitbucket}"
@@ -35,9 +46,17 @@ git rev-parse --verify -q "origin/$SOURCE" >/dev/null || { echo "push $SOURCE fi
 case "$PR_HOST" in
   github)
     command -v gh >/dev/null || { echo "PR_HOST=github needs the gh CLI (https://cli.github.com), then gh auth login" >&2; exit 2; }
+    if [ "$REUSE" = 1 ]; then
+      existing="$(gh pr list --head "$SOURCE" --state open --json url --jq '.[0].url // empty')" || { echo "gh pr list failed" >&2; exit 1; }
+      [ -z "$existing" ] || { echo "$existing"; exit 0; }
+    fi
     exec gh pr create --base "$DEST" --head "$SOURCE" --title "$TITLE" --body-file "$DESCRIPTION_FILE" ;;
   gitlab)
     command -v glab >/dev/null || { echo "PR_HOST=gitlab needs the glab CLI (https://gitlab.com/gitlab-org/cli), then glab auth login" >&2; exit 2; }
+    if [ "$REUSE" = 1 ]; then
+      existing="$(glab mr list --source-branch "$SOURCE" --output json 2>/dev/null | jq -r '.[0].web_url // empty' 2>/dev/null || true)"
+      [ -z "$existing" ] || { echo "$existing"; exit 0; }
+    fi
     exec glab mr create --source-branch "$SOURCE" --target-branch "$DEST" --title "$TITLE" --description "$(cat "$DESCRIPTION_FILE")" --yes ;;
 esac
 
@@ -49,7 +68,7 @@ ACCOUNT_EMAIL="${BITBUCKET_EMAIL:-$(git config user.email || true)}"
 [ -n "$ACCOUNT_EMAIL" ] || { echo "set BITBUCKET_EMAIL or git config user.email (the Bitbucket account email)" >&2; exit 2; }
 REMOTE="$(git remote get-url origin)"
 PR_TOKEN="${BITBUCKET_TOKEN:-}" PR_EMAIL="$ACCOUNT_EMAIL" PR_REMOTE="$REMOTE" PR_TOKEN_REMOTE="$TOKEN_REMOTE" PR_TITLE="$TITLE" PR_SOURCE="$SOURCE" \
-PR_DEST="$DEST" PR_DESC="$DESCRIPTION_FILE" python3 -I - <<'PY'
+PR_DEST="$DEST" PR_DESC="$DESCRIPTION_FILE" PR_REUSE="$REUSE" python3 -I - <<'PY'
 import base64, json, os, re, urllib.error, urllib.request
 remote = os.environ["PR_REMOTE"]
 creds = re.match(r"https://([^@/]+:[^@/]+)@bitbucket\.org/", os.environ["PR_TOKEN_REMOTE"])
@@ -68,6 +87,17 @@ body = {
     "close_source_branch": True,
     "description": open(os.environ["PR_DESC"]).read(),
 }
+if os.environ.get("PR_REUSE") == "1":
+    import urllib.parse
+    q = urllib.parse.quote(f'source.branch.name="{os.environ["PR_SOURCE"]}" AND state="OPEN"')
+    lookup = urllib.request.Request(f"https://api.bitbucket.org/2.0/repositories/{repo}/pullrequests?q={q}", headers={"Authorization": f"Basic {auth}"})
+    try:
+        with urllib.request.urlopen(lookup) as response:
+            found = json.load(response).get("values") or []
+            if found:
+                print(found[0]["links"]["html"]["href"]); raise SystemExit(0)
+    except urllib.error.HTTPError as err:
+        raise SystemExit(f"HTTP {err.code} while looking for an existing PR: {err.read().decode()[:300]}")
 request = urllib.request.Request(
     f"https://api.bitbucket.org/2.0/repositories/{repo}/pullrequests", data=json.dumps(body).encode(), method="POST",
     headers={"Authorization": f"Basic {auth}", "Content-Type": "application/json"})

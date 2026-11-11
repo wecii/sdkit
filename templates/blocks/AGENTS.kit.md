@@ -17,7 +17,7 @@ Spec-driven development with spec-driven-kit. This block is a map and the non-ne
 6. Token economy (`__KIT_DIR__/rules/token-economy.md`): cheap checks first, hand over paths not conversation, trim output, parallelize only disjoint work.
 
 ## Roles (subagents live in the host's agents directory: `.codex/agents/`, `.opencode/agents/`, `.cursor/agents/`, `.gemini/agents/`, Claude `agents/`)
-`analyst` completeness of the task prompt · `scout` cheap lookups · `engineer` design and test strategy · `developer` implements · `test-writer` tests only · `devsecops` pipeline/infra/supply chain · `reviewer`, `security-auditor`, `verifier` (`verifier-deep` for high risk) independent and read-only. Roles never call roles. The main session is the `orchestrator`. Task state: `__KIT_DIR__/scripts/state.sh`; a role as a separate process: `__KIT_DIR__/scripts/run-role.sh`.
+`analyst` completeness of the task prompt · `scout` cheap lookups · `engineer` design and test strategy · `developer` implements · `test-writer` tests only · `devsecops` pipeline/infra/supply chain · `reviewer`, `security-auditor`, `spec-reviewer` (spec documents, analyst environment), `verifier` (`verifier-deep` for high risk) independent and read-only. Roles never call roles. The main session is the `orchestrator`. Task state: `__KIT_DIR__/scripts/state.sh`; a role as a separate process: `__KIT_DIR__/scripts/run-role.sh`.
 
 ## Guards
 Git hooks enforce the spec-driven phase gate (no code before a proposal and a failing test, no push or PR before verification; `SDD_MODE` in `__KIT_DIR__/__KIT_ENV__`, default strict), secrets, frozen tests, protected paths and protected-branch pushes for every tool. Enable once per clone: `git config core.hooksPath .githooks`.

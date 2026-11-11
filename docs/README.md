@@ -21,6 +21,7 @@ Pick where to start by your role.
 | Understanding which **agent/model** runs, the budget, retries and escalation (F06) | [design-routing.md](design-routing.md) | [design-evidence.md](design-evidence.md) |
 | Understanding how **token usage and cost** are computed, the price table (`pricing.json`), `usage.sh report/scan` output and missing-data warnings (F07) | [design-usage.md](design-usage.md) | [design-telemetry.md](design-telemetry.md) |
 | Understanding the correctness and cost comparison of the same task solved by **plain agentic development vs. SDKit** (benchmark infrastructure, F05-A) | [design-benchmark.md](design-benchmark.md) | [design-telemetry.md](design-telemetry.md) |
+| Working as an **analyst** (specs, review, Jira tasks) or a **developer** on Jira-driven tasks (`SDKIT_ENV`) | [role-aware.md](role-aware.md) | [design-role-aware.md](design-role-aware.md), [guide.md](guide.md) §10 |
 | Going to change **the kit itself** | [../CONTRIBUTING.md](../CONTRIBUTING.md) | [guide.md](guide.md) §14, §15 |
 
 ## Files
@@ -32,6 +33,8 @@ Pick where to start by your role.
 | [audit-architecture.md](audit-architecture.md) | Architecture and capability audit (F00): component map, capability inventory, lifecycles, findings, prioritized list, proposed ADRs |
 | [design-routing.md](design-routing.md) | Smart orchestration (F06): decision engine, model registry, execution contract, retry/escalation, budget (hard/advisory), routing matrix, trust boundaries |
 | [design-usage.md](design-usage.md) | Usage and cost accounting (F07): root causes, ledger schema v2, deduplication, price resolution, report, before/after, limits |
+| [role-aware.md](role-aware.md) | Role-aware environments: analyst and developer flows, usage, Jira task contract, change requests, EGM, limits, open decisions |
+| [design-role-aware.md](design-role-aware.md) | Design contract of the role-aware work packages |
 | [design-adapters.md](design-adapters.md) | Execution adapter contract (F12) and optional LiteLLM (F13) |
 | [design-security.md](design-security.md) | Security hardening (F19): redaction, audit trail, static policy |
 | [design-benchmark.md](design-benchmark.md) | Task benchmark (F05-A): task registry, isolation and security boundary, strategies, metrics (per host), simulation, report, F05-B prerequisites |
