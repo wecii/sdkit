@@ -126,10 +126,25 @@ Your session is the *orchestrator*. It hands narrow jobs to *roles*, each run a 
 | Role | Job |
 |---|---|
 | `analyst` | Every task: is the request complete, what risk |
+| `scout` | Cheap read-only lookups ("where is X", call sites), so costly roles do not search |
 | `engineer` | Design and test strategy for medium/high (designs, never implements) |
 | `test-writer`, `developer`, `devsecops` | Tests, code, pipelines |
 | `verifier` | Medium/high: checks the diff against the DoD. Read-only |
 | `reviewer`, `security-auditor` | Required at high (security-auditor also for pipeline/infra). Read-only |
+| `spec-reviewer` | Analyst environment: reviews a PRD, ADR or feature spec against a rubric. Read-only |
+
+The `orchestrator` is not an agent file: it is your own session, playing the role defined in `core/roles/orchestrator.md`.
+
+### Skills
+
+| Skill | Use it to |
+|---|---|
+| `spec-driven-dev` | Run a task through the whole workflow above (the driver; it calls the OpenSpec skills) |
+| `generate-specs` | Analyst: turn a pre-spec into reviewed specs, an OpenSpec change and one PR |
+| `update-specs` | Analyst: change a published spec after edits or Tech Lead change requests |
+| `generate-tasks` | Analyst: split an approved spec into Jira subtasks |
+| `incident-to-rule` | Turn a resolved bug or incident into a lasting guard |
+| `scaffold-init`, `scaffold-doctor` | Set a repo up, and check that the setup is complete |
 
 ## Token and cost control
 
@@ -280,10 +295,32 @@ Adding a stack: [stacks/README.md](stacks/README.md).
 
 ## Analyst and developer environments
 
-`sdkit init --env analyst|developer` picks an experience; without it nothing changes (`SDKIT_ENV=standalone`, the workflow above).
+`sdkit init --env analyst|developer` picks an experience; without it nothing changes (`SDKIT_ENV=standalone`, the workflow above). The two environments split the work between two repos and hand over through a spec pinned to a git commit.
 
-- **analyst** (a specs repo): `/generate-specs` turns a pre-spec into a reviewed spec PR, `/update-specs` changes an approved one, `/generate-tasks` writes Jira subtasks from it. The Tech Lead approves by merging.
-- **developer** (a source repo): `/spec-driven-dev PROJ-123` runs the same phases and gates, but the task and its pinned spec revision come from Jira.
+```mermaid
+flowchart LR
+  subgraph A["Analyst env: specs repo"]
+    P["Pre-spec<br/>(git-ignored)"] --> GS["/generate-specs<br/>PRD, ADRs, feature specs"]
+    GS --> SR{"Independent spec review<br/>spec-reviewer / EGM"}
+    SR -->|"findings"| GS
+    SR -->|"PASS"| OP["openspec-propose<br/>proposal, design, tasks, specs"]
+    OP --> PUB["Publish: branch spec/id + one PR"]
+    PUB --> TL{{"Tech Lead merges = approval"}}
+    TL -->|"change request"| US["/update-specs"]
+    US --> SR
+    TL --> GT["/generate-tasks id --sha SHA<br/>Jira subtasks"]
+  end
+  subgraph D["Developer env: source repo"]
+    GT --> SD["/spec-driven-dev PROJ-123<br/>spec pinned, read-only"]
+    SD --> PH["Same phases and gates<br/>intake to done"]
+    PH --> EV["Evidence and PR link on the ticket"]
+    PH -->|"spec defect"| BL["sdd.sh block --spec-change<br/>change request in Jira"]
+    BL --> US
+  end
+```
+
+- **analyst** (a specs repo): `/generate-specs` turns a pre-spec into a reviewed spec, outputs it as an OpenSpec change and opens one PR. The Tech Lead approves by merging. `/update-specs` changes an approved one, `/generate-tasks` writes Jira subtasks from it. The review is bound to the document's content hash, so any edit makes it stale.
+- **developer** (a source repo): `/spec-driven-dev PROJ-123` runs the same phases and gates, but the task and its pinned spec revision come from Jira. A spec defect never gets worked around: it becomes a change request and the task stays blocked until the revised spec is pinned.
 
 ```
 sdkit init --env analyst    # then: /generate-specs onboarding
