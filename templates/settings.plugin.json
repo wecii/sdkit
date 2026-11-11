@@ -23,7 +23,16 @@
       "Bash(jq *)",
       "Bash(ls*)",
       "Bash(cat *)",
-      "Bash(*/sdd.sh *)"
+      "Bash(*/sdd.sh *)",
+      "Bash(*/spec.sh *)",
+      "Bash(*/review.sh *)",
+      "Bash(sdkit prespec *)",
+      "Bash(mkdir -p __KIT_DIR__/work/*)",
+      "Bash(mkdir -p specs/*)",
+      "Bash(mv __KIT_DIR__/work/*)",
+      "Bash(mv openspec/changes/*)",
+      "Bash(cp __KIT_DIR__/work/*)",
+      "Bash(ls __KIT_DIR__/work/*)"
     ],
     "deny": [
       "Bash(rm -rf *)",
