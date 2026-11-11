@@ -259,7 +259,7 @@ install_scripts() {
   for f in "$SCAFFOLD_ROOT"/stacks/$STACK/scripts/*.sh; do install_managed "stacks/$STACK/scripts/$(basename "$f")" "$KIT_DIR/scripts/$(basename "$f")"; done
   [ -f "$SCAFFOLD_ROOT/stacks/$STACK/scripts/steps.sh" ] && grep -q node-lib "$SCAFFOLD_ROOT/stacks/$STACK/scripts/steps.sh" \
     && install_managed "stacks/_node/scripts/node-lib.sh" "$KIT_DIR/scripts/node-lib.sh"
-  for s in env sdd resolve-base open-pr guard plan-waves worktree verify-core verify-lib state parse-verdict check-plan-parity check-writes usage memory lookup-cache run-role route workflow contract telemetry dod-check audit redact digest adapter dispatch knowledge recover test-select pr-check pricing review jira; do
+  for s in env sdd resolve-base open-pr guard plan-waves worktree verify-core verify-lib state parse-verdict check-plan-parity check-writes usage memory lookup-cache run-role route workflow contract telemetry dod-check audit redact digest adapter dispatch knowledge recover test-select pr-check pricing review jira spec tasks; do
     install_managed "scripts/$s.sh" "$KIT_DIR/scripts/$s.sh"
   done
   chmod +x "$TARGET/$KIT_DIR"/scripts/*.sh

@@ -10,7 +10,13 @@ For details see [guide.md](guide.md).
 /scaffold-init                              # new repo, once (by the person setting it up); host: claude, codex, opencode, cursor, gemini (several, comma-separated)
                                             # on Codex invoke it as: $spec-driven-dev
 /scaffold-doctor                            # is the install sound?
+/generate-specs <pre-spec>                  # analyst env: pre-spec -> reviewed spec PR
+/update-specs <id>                          # analyst env: change an approved spec (or answer a change request)
+/generate-tasks <id> --sha <SHA>            # analyst env: approved spec -> Jira subtasks
+/spec-driven-dev <JIRA-KEY>                 # developer env (SDD_MANAGED=on): the task comes from Jira
+sdkit init --env analyst|developer          # pick the environment (default standalone); sdkit prespec check <name>
 ```
+Role-aware environments: [role-aware.md](role-aware.md).
 
 ## What the risk label does
 
@@ -36,7 +42,7 @@ The analyst proposes the label, **you confirm it**. Ticket priority does not set
 ## Roles
 
 `orchestrator` (main session) · `analyst` is anything missing? · `scout` cheap lookup · `engineer` design and test strategy · `developer` code · `test-writer` tests ·
-`devsecops` pipeline/infrastructure · `reviewer` / `security-auditor` / `verifier` independent and read-only (`verifier-deep` at `high` risk, strong tier). The implementer never verifies.
+`devsecops` pipeline/infrastructure · `reviewer` / `security-auditor` / `spec-reviewer` (spec documents) / `verifier` independent and read-only (`verifier-deep` at `high` risk, strong tier). The implementer never verifies.
 Roles do not call each other; if a lookup is needed they write `NEEDS-LOOKUP:` and the orchestrator runs `scout`.
 
 ## Hosts and stacks

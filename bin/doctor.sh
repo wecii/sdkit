@@ -167,7 +167,7 @@ has_agents_host=0
 if [ "$has_agents_host" = 1 ]; then
   [ -f "$TARGET/AGENTS.md" ] && ok "AGENTS.md present" || bad "AGENTS.md missing"
   [ -f "$TARGET/.agents/skills/spec-driven-dev/SKILL.md" ] && ok "skills installed in .agents/skills" || bad ".agents/skills/spec-driven-dev missing (run init.sh --host <host>)"
-  for s in verify verify-core env guard plan-waves worktree resolve-base state parse-verdict check-plan-parity check-writes usage memory lookup-cache run-role route workflow contract telemetry dod-check audit redact digest adapter dispatch knowledge recover test-select pr-check pricing review jira; do
+  for s in verify verify-core env guard plan-waves worktree resolve-base state parse-verdict check-plan-parity check-writes usage memory lookup-cache run-role route workflow contract telemetry dod-check audit redact digest adapter dispatch knowledge recover test-select pr-check pricing review jira spec tasks; do
     [ -x "$TARGET/$KIT_DIR/scripts/$s.sh" ] || bad "$KIT_DIR/scripts/$s.sh missing or not executable (run upgrade.sh)"
   done
   [ -x "$TARGET/$KIT_DIR/adapters.d/jira.sh" ] || bad "$KIT_DIR/adapters.d/jira.sh missing or not executable (run upgrade.sh)"

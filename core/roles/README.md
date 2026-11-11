@@ -57,8 +57,9 @@ git hooks in `adapters/git/` everywhere else.
 | `reviewer` | read-only | standard | Rule and pitfall review of a diff |
 | `security-auditor` | read-only | standard | Attack-oriented review of a diff |
 | `verifier` | read-only | standard | Independent Definition-of-Done gate |
+| `spec-reviewer` | read-only | standard | Independent review of a spec document (PRD, feature spec, ADR) against a `review.d/` checklist; analyst environment |
 
-Ten roles are defined; `orchestrator` is a session role, so nine subagent roles plus the generated `verifier-deep` (strong tier, used for `high` risk) give ten files per host.
+Eleven roles are defined; `orchestrator` is a session role, so ten subagent roles plus the generated `verifier-deep` (strong tier, used for `high` risk) give eleven files per host.
 Roles never call other roles: they end with `NEEDS-LOOKUP: <question>` and the orchestrator runs `scout`. `scripts/run-role.sh` can run any role as a separate process on any host.
 Every subagent keeps its answer to 15 lines plus its structured block. A writing role puts its long form at the handoff's `OUT:` path; a read-only role cannot, so the orchestrator stores its answer (`run-role.sh --out`).
 
