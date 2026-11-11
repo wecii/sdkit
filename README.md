@@ -40,22 +40,59 @@ The ~70% (tokens) and ~40% (time) figures are a single maintainer's measurements
 SDKit covers the path from a raw idea to a verified PR in two halves that meet at a Jira subtask: the **analyst side** produces an approved, versioned spec, and the **developer side** implements one subtask of it. Each half is a skill-driven flow with scripted gates.
 
 ```mermaid
-flowchart LR
-  D["Discovery"] --> PS["Local Pre-spec<br/>git-ignored"]
-  PS --> GS["generate-specs"]
-  GS --> VS["Versioned Specs<br/>PRD, ADRs, feature specs, OpenSpec change"]
-  VS --> EGM["EGM Review before push<br/>independent, hash-bound"]
-  EGM --> TL{"Tech Lead PR Review"}
-  TL -->|"Changes"| US["update-specs"]
-  US --> VS
-  TL -->|"Approved"| MM["Merge main"]
-  MM --> GT["generate-tasks"]
-  GT --> JS["Jira Subtasks"]
-  JS --> DH["Developer Handoff"]
-  DH --> SDD["spec-driven-dev"]
-  SDD --> PRV["PR + Verification"]
-  SDD -.->|"spec defect: Blocked + change request"| US
-  PRV -.->|"change request after delivery"| US
+flowchart TD
+  subgraph AS["Analyst side: specs repo"]
+    D["Discovery"] --> PS["Local pre-spec<br/>git-ignored"]
+    PS --> GS["/generate-specs"]
+    GS --> VS["Versioned specs<br/>PRD, ADRs, feature specs, OpenSpec change"]
+    VS --> EGM["EGM review before push<br/>independent, hash-bound"]
+    EGM -->|"findings"| GS
+    EGM -->|"PASS"| TL{{"Tech Lead PR review"}}
+    TL -->|"Changes"| US["/update-specs"]
+    US --> VS
+    TL -->|"Approved = merge"| GT["/generate-tasks id --sha SHA<br/>Jira subtasks, each pins the spec revision"]
+  end
+  GT --> ST["/spec-driven-dev PROJ-123"]
+  subgraph DS["Developer side: source repo, spec read-only"]
+    ST --> IN["Intake: task contract, pinned spec revision<br/>and dependencies validated<br/>phase: intake"]
+    IN -->|"field missing, spec unknown,<br/>dependency open: refused"| IN
+    IN --> RK{{"You confirm the risk<br/>can only be raised, never lowered"}}
+    RK --> EX["Explore: read the spec at the pinned revision<br/>scout finds the code"]
+    EX --> PG{{"Plan gate on the task scope<br/>1 / 3 / 5 question rounds by risk"}}
+    PG -->|"Edit a section"| PG
+    PG -->|"Stop here"| AB["Task stops here"]
+    PG -->|"Approve and propose"| PR["DoD: one D line per acceptance criterion<br/>design.md for high<br/>phase: proposed"]
+    PR -->|"no DoD list: refused"| PR
+    PR --> BR["Branch from the release flow's branch source"]
+    BR --> TC{"Testable without real infrastructure?"}
+    TC -->|"no"| TO["You choose: small interface,<br/>record the gap, or integration infra"]
+    TO --> RED
+    TC -->|"yes"| RED["Failing test first, only test files may change<br/>phase: red"]
+    RED -->|"test passes: refused"| RED
+    RED --> GRN["Implement until the test passes<br/>independent subtasks in parallel worktrees<br/>phase: green"]
+    GRN --> VR{"Verification by risk"}
+    VR -->|"low"| LV["verify command passes"]
+    VR -->|"medium"| MV["independent verifier"]
+    VR -->|"high"| HV["verifier + reviewer + security-auditor<br/>started together on the exact diff"]
+    LV --> VD{"Verdict"}
+    MV --> VD
+    HV --> VD
+    VD -->|"malformed"| MF["Verifier re-asked for the format<br/>not counted as a retry"]
+    MF --> VD
+    VD -->|"BLOCK, implementation bug"| RT["developer retries once<br/>with only the failing items"]
+    RT --> GRN
+    VD -->|"second BLOCK"| YOU["Automatic retries stop, you decide"]
+    VD -->|"PASS"| VF["phase: verified<br/>attestation written, commit it with the change"]
+    VF -->|"edit after verified"| STL["Verdict is stale"]
+    STL --> VR
+    VF --> PRQ["Commit, push, open PR<br/>evidence and PR link on the Jira subtask<br/>phase: pr"]
+    PRQ --> MG["You merge the PR<br/>done --merged checks the merge<br/>phase: done"]
+    MG --> CO["Closeout: memory candidates, Value Report,<br/>work dir and worktrees cleaned"]
+  end
+  VD -->|"BLOCK, spec gap"| BL["sdd.sh block --spec-change<br/>change request in Jira, subtask Blocked"]
+  BL --> US
+  US -.->|"revised spec merged, subtask re-pinned:<br/>sdd.sh revalidate --sha"| IN
+  CO -.->|"change request after delivery"| US
 ```
 
 | Lifecycle phase | Who / what | Output |
@@ -79,81 +116,41 @@ Seven principles hold across the whole path:
 6. **Task creation is idempotent.** Running `generate-tasks` twice on the same spec updates the subtasks, it never duplicates them.
 7. **`spec-driven-dev` starts from the subtask.** In developer mode it never regenerates the PRD, architecture or spec.
 
-The kit does not run discovery, release or deploy for you. Setup and flows per environment: [Analyst and developer environments](#analyst-and-developer-environments). Without Jira, `/spec-driven-dev <description>` runs the developer half alone.
+The kit does not run discovery, release or deploy for you. Setup and flows per environment: [Analyst and developer environments](#analyst-and-developer-environments).
 
 ### Inside `spec-driven-dev`
 
-You give the agent a task. SDKit moves it through a **phase machine** (`scripts/sdd.sh`). Each move has an exit condition that a script checks, so the agent cannot skip a step by deciding it is not needed. The path is not a straight line: some steps loop, some branch by risk, and failures have defined exits.
+The developer side is a **phase machine** (`scripts/sdd.sh`). Each move has an exit condition that a script checks, so the agent cannot skip a step by deciding it is not needed. The path is not a straight line: some steps loop, some branch by risk, and failures have defined exits. In this mode the skill writes no spec: it never calls the OpenSpec skills (`openspec-propose` and the rest), and nothing under `SPECS_DIR` can be edited. At the start and end of every step it prints `[sdkit] orchestrator · Step <n>/<total>: <name> — started|done`; the total is 7 for `low` and 8 for `medium` and `high`.
 
-```mermaid
-flowchart TD
-  T["/spec-driven-dev<br/>ticket or description"] --> AN["Intake: analyst checks the request<br/>scout looks up named code in parallel<br/>phase: intake"]
-  AN -->|"incomplete"| Q["Questions back to you"]
-  Q --> AN
-  AN --> RK{{"You confirm the risk label<br/>low / medium / high"}}
-  RK --> EX["Explore: scout finds code, cached per code state"]
-  EX --> PG{{"Plan gate: you approve the plan<br/>1 / 3 / 5 question rounds by risk"}}
-  PG -->|"Edit a section"| PG
-  PG -->|"Stop here"| AB["Task stops here"]
-  PG -->|"Approve and propose"| PR["Propose: proposal + design + Definition of Done<br/>phase: proposed"]
-  PR -->|"no DoD list: refused"| PR
-  PR --> BR["Branch from the release flow's branch source"]
-  BR --> TC{"Testable without real infrastructure?"}
-  TC -->|"no"| TO["You choose: small interface,<br/>record the gap, or integration infra"]
-  TO --> RED
-  TC -->|"yes"| RED["Write the failing test, only test files may change<br/>phase: red"]
-  RED -->|"test passes: refused"| RED
-  RED --> GRN["Implement until the test passes<br/>independent tasks run in parallel worktrees<br/>phase: green"]
-  GRN --> VR{"Verification by risk"}
-  VR -->|"low"| LV["verify command passes"]
-  VR -->|"medium"| MV["independent verifier"]
-  VR -->|"high"| HV["verifier + reviewer + security-auditor<br/>started together on the exact diff"]
-  LV --> VD{"Verdict"}
-  MV --> VD
-  HV --> VD
-  VD -->|"malformed"| MF["Verifier re-asked for the format<br/>not counted as a retry"]
-  MF --> VD
-  VD -->|"PASS"| VF["phase: verified<br/>attestation written, commit it with the change"]
-  VD -->|"BLOCK, implementation bug"| RT["developer retries once<br/>with only the failing items"]
-  RT --> GRN
-  VD -->|"BLOCK, spec gap"| PG
-  VD -->|"second BLOCK"| YOU["Automatic retries stop, you decide"]
-  VF -->|"edit after verified"| ST["Verdict is stale"]
-  ST --> VR
-  VF --> PRQ["Commit, push, open PR<br/>phase: pr"]
-  PRQ --> MG["You merge the PR<br/>phase: done"]
-  MG --> CO["Closeout: specs synced and archived, memory candidates,<br/>Value Report, work dir and worktrees cleaned"]
-```
+Gate phases: `intake → proposed → red → green → verified → pr → done` (plus `aborted`). Planning happens inside `intake`.
 
-At the start and end of every step the agent prints `[sdkit] orchestrator · Step <n>/<total>: <name> — started|done`. The total is 7 for `low` and 8 for `medium` and `high`. A retry stays inside the `verify` step and prints no new line.
-
-Gate phases: `intake → proposed → red → green → verified → pr → done` (plus `aborted`). Specification and planning both happen inside `intake`.
+> **Standalone mode** (`SDKIT_ENV=standalone`, no Jira): `/spec-driven-dev <description>` runs the same phases on a free-text task. The differences are at the edges: the `analyst` role checks the request and proposes the risk, `openspec-explore` grounds the problem, `openspec-propose` writes `proposal.md` / `design.md` / `specs/` / `tasks.md` from the approved plan, and closeout syncs and archives the specs with `openspec-sync-specs` and `openspec-archive-change`.
 
 ### Step by step
 
 | Step | Phase | What happens | It moves on when |
 |---|---|---|---|
-| **Intake** | `intake` | The `analyst` checks that the request is complete and proposes a risk label from your `project.md` rubric | You confirm the label |
-| **Explore** | `intake` | `scout` answers "where is X" cheaply; answers are cached per code state | The problem is grounded in code |
-| **Plan gate** | `intake` | For medium/high the `engineer` drafts design, test strategy and task split. You are questioned on the plan in batched rounds (1 low, 3 medium, 5 high) | You pick `Approve and propose` |
-| **Propose** | `proposed` | `plan.md` becomes `proposal.md`, `design.md`, `specs/`, `tasks.md`. Every acceptance criterion is a testable line `D<n>: ... \| Verified by: ...` | `advance proposed` finds a Definition of Done list (high: also a race/ordering section) |
+| **Intake** | `intake` | `sdd.sh start --ticket <KEY>` fetches the subtask, validates its contract, checks that the pinned `specSha` exists in `SPECS_DIR` and that every dependency is done. The risk comes from the task | The start is accepted and you confirm the risk (you can only raise it) |
+| **Explore** | `intake` | Read the spec at the pinned revision; `scout` answers "where is X" cheaply, cached per code state | The problem is grounded in code and spec |
+| **Plan gate** | `intake` | For medium/high the `engineer` drafts design, test strategy and task split. You are questioned on the plan in batched rounds (1 low, 3 medium, 5 high). Work outside the task's `scope` is a question, not a silent extension | You pick `Approve and propose` |
+| **Definition of Done** | `proposed` | `start` already wrote one `D<n>: ... \| Verified by: ...` line per acceptance criterion; you refine each from the spec text and write `design.md` for high | `advance proposed` re-fetches the contract (same `specSha`), re-checks dependencies and finds the DoD list (high: also a race/ordering section) |
 | **Test first** | `red` | `test-writer` writes the failing test. Only test files may change | `advance red` runs the test and it **fails** |
 | **Implement** | `green` | `developer` writes code until the test passes. Independent tasks (disjoint `writes:`) run as parallel subagents in separate worktrees | `advance green` runs the test and it **passes** |
-| **Verify** | `verified` | Depends on risk (see below). Evidence is tied to the exact diff | A PASS for this diff |
-| **PR** | `pr` | Commit, push and open the PR. Push is denied before `verified` | `advance pr` |
-| **Closeout** | `done` | After you merge: specs synced and archived, memory entries you pick, Value Report written | `advance done` |
+| **Verify** | `verified` | Depends on risk (see below). Evidence is tied to the exact diff, and the attestation records the ticket and `specSha` | A PASS for this diff |
+| **PR** | `pr` | Commit, push and open the PR. Push is denied before `verified`. `sdd.sh evidence-sync` comments the evidence and PR link on the subtask and moves it to `JIRA_REVIEW_STATUS` | `advance pr` |
+| **Closeout** | `done` | After you merge: `done --merged` checks that the PR head is in the base branch. Memory entries you pick, Value Report written | `advance done` |
 
 ### When it is not a straight line
 
 | Situation | What SDKit does |
 |---|---|
-| Request is incomplete | The analyst sends questions back; nothing is proposed until the brief is complete |
+| Task contract incomplete, spec revision unknown or dependency open | `sdd.sh start` is refused and says why |
 | You want to change the plan | `Edit a section` re-runs only the affected rounds; `Stop here` ends the task |
 | Proposal has no Definition of Done | `advance proposed` is refused with the reason; fix and retry |
 | Test passes before any code exists | `advance red` is refused: the test must fail, for the right reason |
 | Tasks overlap or depend on each other | `after:` links order them; tasks with overlapping `writes:` never run in parallel (`plan-waves.sh` computes the waves) |
 | Verifier `BLOCK`, implementation bug | One automatic retry with only the failing items |
-| Verifier `BLOCK`, spec gap | Back to the plan gate. No retry against a broken target |
+| Verifier `BLOCK` or any finding that the spec itself is wrong | `sdd.sh block --spec-change` files a change request in Jira and blocks the task. Every `advance` and every code edit is refused until the revised spec is merged and `sdd.sh revalidate --sha <new sha>` passes. No retry against a broken target |
 | Second `BLOCK` | Automatic retries stop and you decide. No third loop |
 | Code edited after verification | The verdict is stale; push and PR are refused until you verify again |
 | Valid evidence already exists for this diff | With `ROUTING=on` it is reused and nothing runs again |
@@ -179,7 +176,7 @@ Your session is the *orchestrator*. It hands narrow jobs to *roles*, each run a 
 
 | Role | Job |
 |---|---|
-| `analyst` | Every task: is the request complete, what risk |
+| `analyst` | Standalone intake: is the request complete, what risk |
 | `scout` | Cheap read-only lookups ("where is X", call sites), so costly roles do not search |
 | `engineer` | Design and test strategy for medium/high (designs, never implements) |
 | `test-writer`, `developer`, `devsecops` | Tests, code, pipelines |
