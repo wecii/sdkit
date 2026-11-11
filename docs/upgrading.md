@@ -240,3 +240,7 @@ Analyst repos only. `generate-specs` now drafts in `work/spec-draft/`, asks you 
 ## 1.6.1: permissions for the work directory
 
 No manual step. `sdkit upgrade` adds Claude Code allow entries (when missing) so agents can run `spec.sh`, `review.sh`, `sdkit prespec` and create or move files under `<project-dir>/work/` and the OpenSpec change into `specs/` without a prompt. A `work` directory that is a symlink outside the repo still prompts: Claude Code always asks for writes outside the project.
+
+## 1.6.2: the round cap walks findings one by one
+
+No manual step. At the spec-review round cap, `generate-specs` now goes through the open findings with you one at a time (proposed edit, then apply / answer / accept / reject) instead of listing them. `review.sh begin <id> --final` opens one verification round outside the cap (once per review id), and `review.sh accept` records `JIRA_USER` as who accepted when `--who` is not given. `JIRA_USER` moved out of the shared `sdkit.env` template: set it in your own `sdkit.local.env` (your Jira account, e-mail on Jira Cloud). An existing `JIRA_USER` in `sdkit.env` keeps working, but belongs in `sdkit.local.env`.
