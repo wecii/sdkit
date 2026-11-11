@@ -41,7 +41,7 @@ You give the agent a task. SDKit moves it through a **phase machine** (`scripts/
 
 ```mermaid
 flowchart TD
-  T["/spec-driven-dev<br/>ticket or description"] --> AN["Intake: analyst checks the request<br/>phase: intake"]
+  T["/spec-driven-dev<br/>ticket or description"] --> AN["Intake: analyst checks the request<br/>scout looks up named code in parallel<br/>phase: intake"]
   AN -->|"incomplete"| Q["Questions back to you"]
   Q --> AN
   AN --> RK{{"You confirm the risk label<br/>low / medium / high"}}
@@ -51,17 +51,23 @@ flowchart TD
   PG -->|"Stop here"| AB["Task stops here"]
   PG -->|"Approve and propose"| PR["Propose: proposal + design + Definition of Done<br/>phase: proposed"]
   PR -->|"no DoD list: refused"| PR
-  PR --> RED["Write the failing test, only test files may change<br/>phase: red"]
+  PR --> BR["Branch from the release flow's branch source"]
+  BR --> TC{"Testable without real infrastructure?"}
+  TC -->|"no"| TO["You choose: small interface,<br/>record the gap, or integration infra"]
+  TO --> RED
+  TC -->|"yes"| RED["Write the failing test, only test files may change<br/>phase: red"]
   RED -->|"test passes: refused"| RED
-  RED --> GRN["Implement until the test passes<br/>phase: green"]
+  RED --> GRN["Implement until the test passes<br/>independent tasks run in parallel worktrees<br/>phase: green"]
   GRN --> VR{"Verification by risk"}
   VR -->|"low"| LV["verify command passes"]
   VR -->|"medium"| MV["independent verifier"]
-  VR -->|"high"| HV["verifier + reviewer + security-auditor<br/>on the exact diff"]
+  VR -->|"high"| HV["verifier + reviewer + security-auditor<br/>started together on the exact diff"]
   LV --> VD{"Verdict"}
   MV --> VD
   HV --> VD
-  VD -->|"PASS"| VF["phase: verified"]
+  VD -->|"malformed"| MF["Verifier re-asked for the format<br/>not counted as a retry"]
+  MF --> VD
+  VD -->|"PASS"| VF["phase: verified<br/>attestation written, commit it with the change"]
   VD -->|"BLOCK, implementation bug"| RT["developer retries once<br/>with only the failing items"]
   RT --> GRN
   VD -->|"BLOCK, spec gap"| PG
@@ -70,8 +76,10 @@ flowchart TD
   ST --> VR
   VF --> PRQ["Commit, push, open PR<br/>phase: pr"]
   PRQ --> MG["You merge the PR<br/>phase: done"]
-  MG --> CO["Closeout: specs archived, memory candidates,<br/>Value Report"]
+  MG --> CO["Closeout: specs synced and archived, memory candidates,<br/>Value Report, work dir and worktrees cleaned"]
 ```
+
+At the start and end of every step the agent prints `[sdkit] orchestrator · Step <n>/<total>: <name> — started|done`. The total is 7 for `low` and 8 for `medium` and `high`. A retry stays inside the `verify` step and prints no new line.
 
 Gate phases: `intake → proposed → red → green → verified → pr → done` (plus `aborted`). Specification and planning both happen inside `intake`.
 
