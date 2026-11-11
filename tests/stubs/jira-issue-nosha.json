@@ -1,0 +1,1 @@
+{"key":"PRJ-8","fields":{"summary":"t","description":"```sdkit-task\n{\"externalId\":\"S1:T3\",\"specId\":\"S1\",\"specVersion\":\"3\",\"acceptanceCriteria\":[],\"risk\":\"low\",\"dependencies\":[],\"scope\":[\"a\"],\"parent\":\"PRJ-1\"}\n```","status":{"name":"To Do","statusCategory":{"key":"new"}},"labels":[]}}

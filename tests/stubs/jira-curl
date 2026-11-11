@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Fake curl for tests/jira.test.sh: a tiny stateful Jira under $FAKE_STATE (issues/KEY.json). Logs argv (ARGS) and stdin (CFG), prints body + "\n<code>".
+echo "ARGS $*" >> "$FAKE_LOG"
+m=GET; url=""; body=""; while [ $# -gt 0 ]; do case "$1" in -X) m="$2"; shift ;; -d) body="$2"; shift ;; -w|--max-time) shift ;; -K) ;; -*) ;; *) url="$1" ;; esac; shift; done
+cfg="$(cat)"; printf 'CFG %s\n' "$cfg" >> "$FAKE_LOG"; echo "REQ $m ${url#*/rest/api/2/} $body" >> "$FAKE_LOG"
+reply() { printf '%s\n%s' "$2" "$1"; exit 0; }
+case "${FAKE_MODE:-ok}" in 500) reply 500 '{"errorMessages":["boom"]}' ;; down) echo "curl: (7) refused" >&2; exit 7 ;; esac
+p="${url#*/rest/api/2/}"; p="${p%%\?*}"; d="$FAKE_STATE/issues"; mkdir -p "$d"
+case "$m $p" in
+  "POST search") l="$(jq -r '.jql' <<< "$body" | sed 's/.*"\(.*\)".*/\1/')"
+    r="$(for f in "$d"/*.json; do [ -f "$f" ] && jq -c --arg l "$l" 'select((.fields.labels // []) | index($l)) | {key, fields: {labels: .fields.labels}}' "$f"; done | jq -sc '{issues: .}')"; reply 200 "${r:-{\"issues\":[]\}}" ;;
+  "POST issue") n=$(( $(ls "$d" | wc -l) + 100 )); k="$(jq -r '.fields.project.key' <<< "$body")-$n"
+    jq -c --arg k "$k" '{key: $k, fields: (.fields + {status: {name: "To Do", statusCategory: {key: "new"}}})}' <<< "$body" > "$d/$k.json"; reply 201 "{\"key\":\"$k\"}" ;;
+  "PUT issue/"*) f="$d/${p#issue/}.json"; [ -f "$f" ] || reply 404 '{}'
+    jq -c --argjson b "$body" '.fields += $b.fields' "$f" > "$f.n" && mv "$f.n" "$f"; reply 204 "" ;;
+  "GET issue/"*/transitions) reply 200 '{"transitions":[{"id":"31","name":"Done","to":{"name":"Done"}}]}' ;;
+  "POST issue/"*/transitions|"POST issue/"*/comment) reply 204 "" ;;
+  "GET issue/"*) f="$d/${p#issue/}.json"; [ -f "$f" ] && reply 200 "$(cat "$f")"; reply 404 '{}' ;;
+  "POST issueLink") reply 201 "" ;;
+esac
+reply 400 '{}'
