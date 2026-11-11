@@ -24,10 +24,13 @@ if [ -f "$env_file" ]; then
   if [ -z "$ignored" ]; then ok "$ENV_NAME parses"
   else bad "settings lines the kit ignores (shell code in a settings file is not run any more; see docs/upgrading.md, \"Settings files are parsed\"):"; printf '%s\n' "$ignored" | sed 's/^/          /'; fi
   SDKIT_ENV_QUIET=1 sdkit_env_load_file "$env_file"; SDKIT_ENV_QUIET=1 sdkit_env_load_file "$TARGET/$KIT_DIR/sdkit.local.env"
-  [ -n "${STACK:-}" ] || warn "STACK is not set in $ENV_NAME: the kit assumes '$SDKIT_DEFAULT_STACK'. Set STACK=<go|spring-boot|jvm|python|nextjs|react-native|generic>"
+  ENVP="$(sed -n 's/^SDKIT_ENV=//p' "$env_file" | tail -1 | tr -d "\"' ")"; ENVP="${ENVP:-standalone}"   # install persona: analyst skips the stack, verify and openspec checks
+  case "$ENVP" in standalone|analyst|developer) [ "$ENVP" = standalone ] || ok "install env: $ENVP" ;; *) bad "SDKIT_ENV '$ENVP' is not standalone, analyst or developer"; ENVP=standalone ;; esac
+  [ "$ENVP" = analyst ] || [ -n "${STACK:-}" ] || warn "STACK is not set in $ENV_NAME: the kit assumes '$SDKIT_DEFAULT_STACK'. Set STACK=<go|spring-boot|jvm|python|nextjs|react-native|generic>"
   git -C "$TARGET" rev-parse --verify -q "${BASE_BRANCH:-}" >/dev/null || git -C "$TARGET" rev-parse --verify -q "origin/${BASE_BRANCH:-}" >/dev/null \
     && ok "BASE_BRANCH '${BASE_BRANCH:-}' exists" || bad "BASE_BRANCH '${BASE_BRANCH:-}' is not a branch in this repo"
-  if [ -n "${VERIFY_CMD:-}" ]; then
+  if [ "$ENVP" = analyst ]; then :
+  elif [ -n "${VERIFY_CMD:-}" ]; then
     [ -x "$TARGET/$VERIFY_CMD" ] && ok "VERIFY_CMD executable" || bad "VERIFY_CMD '$VERIFY_CMD' missing or not executable"
   else
     ok "VERIFY_CMD empty: the plugin's verify engine is used"
@@ -66,6 +69,19 @@ if [ -f "$env_file" ]; then
       && warn "$KIT_DIR/sdkit.local.env is committed but it is personal: git rm --cached $KIT_DIR/sdkit.local.env" || ok "sdkit.local.env stays out of git"
   else
     warn "legacy layout ($KIT_DIR with $ENV_NAME): it keeps working; sdkit upgrade --migrate moves it to .sdkit/"
+  fi
+  if [ "$ENVP" = developer ]; then
+    sd="${SPECS_DIR:-specs}"
+    if [ -e "$TARGET/$sd/.git" ] && git -C "$TARGET/$sd" rev-parse --git-dir >/dev/null 2>&1; then ok "$sd/ submodule present"
+    else warn "$sd/ submodule missing: git submodule add ${SPEC_REPO:-<SPEC_REPO>} $sd (then git submodule update --init)"; fi
+    [ "${SDD_MANAGED:-}" = on ] && ok "SDD_MANAGED=on" || warn "SDD_MANAGED is not on (developer env runs managed)"
+    [ "${TRACKER:-}" = jira ] && ok "TRACKER=jira" || warn "TRACKER is not jira (set TRACKER=jira in $ENV_NAME; developer env takes tasks from Jira)"
+  fi
+  if [ "$ENVP" = analyst ]; then
+    pd="${PRESPEC_DIR:-prespec}"; pd="${pd%/}"
+    if git -C "$TARGET" check-ignore -q -- "$pd/x" 2>/dev/null; then ok "$pd/ is git-ignored (pre-specs are never committed)"
+    else bad "$pd/ is not git-ignored: add /$pd/ to .gitignore (sdkit init --env analyst does)"; fi
+    [ -z "$(git -C "$TARGET" ls-files -- "$pd" 2>/dev/null)" ] || bad "files under $pd/ are tracked: git rm -r --cached $pd"
   fi
   [ -z "${BASE_BRANCH_MODE:-}" ] || ok "release-branch flow on (BASE_BRANCH_MODE=$BASE_BRANCH_MODE)"
 else
@@ -114,8 +130,10 @@ for f in known-pitfalls.md .gitignore; do
   [ -f "$TARGET/$KIT_DIR/$f" ] && ok "$KIT_DIR/$f present" || bad "$KIT_DIR/$f missing"
 done
 { [ -f "$TARGET/.claude/settings.json" ] || [ -f "$TARGET/.claude/settings.local.json" ]; } && { [ -f "$TARGET/.claude/CLAUDE.md" ] && ok ".claude/CLAUDE.md present" || bad ".claude/CLAUDE.md missing"; }
-[ -n "$(ls "$TARGET/$KIT_DIR"/verify.d/[0-9]*.sh 2>/dev/null | head -1)" ] && ok "verify.d has active policies" \
-  || warn "no active verify.d policy (rename .example files to enable the ones you want)"
+if [ "${ENVP:-standalone}" != analyst ]; then
+  [ -n "$(ls "$TARGET/$KIT_DIR"/verify.d/[0-9]*.sh 2>/dev/null | head -1)" ] && ok "verify.d has active policies" \
+    || warn "no active verify.d policy (rename .example files to enable the ones you want)"
+fi
 
 settings="$TARGET/.claude/settings.json"; [ -f "$TARGET/.claude/settings.local.json" ] && settings="$TARGET/.claude/settings.local.json"
 if [ -f "$settings" ]; then
@@ -149,9 +167,10 @@ has_agents_host=0
 if [ "$has_agents_host" = 1 ]; then
   [ -f "$TARGET/AGENTS.md" ] && ok "AGENTS.md present" || bad "AGENTS.md missing"
   [ -f "$TARGET/.agents/skills/spec-driven-dev/SKILL.md" ] && ok "skills installed in .agents/skills" || bad ".agents/skills/spec-driven-dev missing (run init.sh --host <host>)"
-  for s in verify verify-core env guard plan-waves worktree resolve-base state parse-verdict check-plan-parity check-writes usage memory lookup-cache run-role route workflow contract telemetry dod-check audit redact digest adapter dispatch knowledge recover test-select pr-check pricing; do
+  for s in verify verify-core env guard plan-waves worktree resolve-base state parse-verdict check-plan-parity check-writes usage memory lookup-cache run-role route workflow contract telemetry dod-check audit redact digest adapter dispatch knowledge recover test-select pr-check pricing review jira; do
     [ -x "$TARGET/$KIT_DIR/scripts/$s.sh" ] || bad "$KIT_DIR/scripts/$s.sh missing or not executable (run upgrade.sh)"
   done
+  [ -x "$TARGET/$KIT_DIR/adapters.d/jira.sh" ] || bad "$KIT_DIR/adapters.d/jira.sh missing or not executable (run upgrade.sh)"
   [ -x "$TARGET/$KIT_DIR/hooks/adapt.sh" ] && ok "hooks copied for the non-Claude hosts" || bad "$KIT_DIR/hooks missing (run upgrade.sh)"
   [ "$(git -C "$TARGET" config core.hooksPath 2>/dev/null)" = ".githooks" ] && ok "git hooks active (core.hooksPath=.githooks)" \
     || warn "git hooks not active in this clone: git config core.hooksPath .githooks"
@@ -219,7 +238,7 @@ cli_note() { command -v "$1" >/dev/null && ok "$1 CLI installed" || warn "$1 CLI
 # tools the stack needs: required|<command>|<hint> or optional|<command>|<hint>
 STACK="${STACK:-$SDKIT_DEFAULT_STACK}"
 tools="$TARGET/$KIT_DIR/scripts/tools.sh"; [ -x "$tools" ] || tools="$SCAFFOLD_ROOT/stacks/$STACK/scripts/tools.sh"
-if [ -x "$tools" ]; then
+if [ -x "$tools" ] && [ "${ENVP:-standalone}" != analyst ]; then
   while IFS='|' read -r kind cmd hint; do
     [ -n "$cmd" ] || continue
     if command -v "$cmd" >/dev/null || [ -x "$TARGET/node_modules/.bin/$cmd" ]; then ok "$cmd installed"
@@ -236,12 +255,16 @@ if [ "$STACK" = react-native ]; then
   done
 fi
 # OpenSpec is a permanent part of the workflow: the CLI, the openspec/ directory and its skills for the repo's hosts
-if command -v openspec >/dev/null 2>&1; then
+if [ "${ENVP:-standalone}" = analyst ]; then
+  ok "analyst env: openspec, stack and verify checks skipped"
+elif command -v openspec >/dev/null 2>&1; then
   ok "openspec CLI installed ($(openspec --version 2>/dev/null | head -1); the kit was tested with 1.13.x)"
 else
   bad "openspec CLI missing: npm install -g @fission-ai/openspec (or: sdkit init --install-openspec)"
 fi
-[ -f "$TARGET/openspec/config.yaml" ] && ok "openspec/ initialised" || bad "openspec/ missing: run 'openspec init --tools <your hosts>' in the repo (sdkit init does it)"
+if [ "${ENVP:-standalone}" != analyst ]; then
+  [ -f "$TARGET/openspec/config.yaml" ] && ok "openspec/ initialised" || bad "openspec/ missing: run 'openspec init --tools <your hosts>' in the repo (sdkit init does it)"
+fi
 if [ -d "$TARGET/openspec" ]; then
   if [ -f "$TARGET/.claude/settings.json" ] || [ -f "$TARGET/.claude/settings.local.json" ] || [ -d "$TARGET/.claude/skills" ]; then
     [ -d "$TARGET/.claude/skills/openspec-propose" ] && ok "openspec skills present for Claude Code" || warn "openspec skills missing in .claude/skills: run 'openspec update' (or init with --tools claude)"

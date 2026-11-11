@@ -8,6 +8,7 @@
 #   sdkit install [--status|--uninstall]   register this kit on the machine for the git hooks     -> bin/install.sh
 #   sdkit report task|session|latest|history [--detailed|--json|--markdown]   the Value Report (what a task or session did, used, saved) -> scripts/report.sh
 #   sdkit pricing refresh|status   the price table <project-dir>/pricing.json (Bedrock list); `sdkit doctor --update-pricing` does the same -> scripts/pricing.sh
+#   sdkit prespec check <name>   validate a pre-spec (analyst env): exists, non-empty markdown, git-ignored, not tracked (validation only)
 #   sdkit version | where | help
 set -eu
 src="${BASH_SOURCE[0]}"
@@ -17,14 +18,40 @@ while [ -h "$src" ]; do   # follow symlinks without readlink -f (macOS)
 done
 BIN="$(cd -P "$(dirname "$src")" && pwd)"
 ROOT="$(cd "$BIN/.." && pwd)"
+# prespec check <name>: <PRESPEC_DIR>/<name>.md (or <name>/ holding markdown) exists, is not empty, is git-ignored and is not tracked.
+# Exit 0 = valid, 1 = invalid (says why), 2 = usage. Validation only: nothing is created or changed.
+prespec_cmd() {
+  [ "${1:-}" = check ] && [ -n "${2:-}" ] && [ $# -eq 2 ] || { echo "usage: sdkit prespec check <name>" >&2; exit 2; }
+  local name="${2%.md}" top kd ef dir f found=0 listed=0
+  case "$name" in ""|*/*|*..*|.*) echo "prespec: bad name '$2' (a plain name, no path)" >&2; exit 2 ;; esac
+  top="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "prespec: not in a git repository" >&2; exit 1; }
+  kd="$(resolve_kit_dir "$top")"; ef="$(resolve_kit_env "$top" "${kd:-.sdkit}")"
+  [ -z "$kd" ] || { SDKIT_ENV_QUIET=1 sdkit_env_load_file "$top/$kd/$ef"; SDKIT_ENV_QUIET=1 sdkit_env_load_file "$top/$kd/sdkit.local.env"; }
+  dir="${PRESPEC_DIR:-prespec}"; dir="${dir%/}"
+  local cands=()
+  if [ -f "$top/$dir/$name.md" ]; then cands=("$dir/$name.md")
+  elif [ -d "$top/$dir/$name" ]; then
+    while IFS= read -r f; do cands+=("${f#$top/}"); done < <(find "$top/$dir/$name" -type f -name '*.md' | sort)
+  fi
+  [ "${#cands[@]}" -gt 0 ] || { echo "prespec: no markdown found for '$name' in $dir/ (expected $dir/$name.md)" >&2; exit 1; }
+  for f in "${cands[@]}"; do
+    [ -n "$(tr -d '[:space:]' < "$top/$f")" ] && found=1 || echo "prespec: $f is empty" >&2
+    git -C "$top" check-ignore -q -- "$f" || { echo "prespec: $f is not git-ignored (add /$dir/ to .gitignore)" >&2; exit 1; }
+    [ -z "$(git -C "$top" ls-files -- "$f")" ] || { echo "prespec: $f is tracked by git (git rm --cached $f); pre-specs are never committed" >&2; exit 1; }
+    listed=$((listed + 1))
+  done
+  [ "$found" = 1 ] || { echo "prespec: '$name' has no non-empty markdown" >&2; exit 1; }
+  echo "prespec: $name ok ($listed file(s), git-ignored, untracked)"
+}
 cmd="${1:-help}"; [ $# -gt 0 ] && shift
 
 case "$cmd" in
   init|doctor|sync|upgrade|install) exec "$BIN/$cmd.sh" "$@" ;;
   pricing) exec "$ROOT/scripts/pricing.sh" "$@" ;;
   report) exec "$ROOT/scripts/report.sh" "$@" ;;
+  prespec) . "$BIN/lib.sh"; prespec_cmd "$@" ;;
   version|--version|-v) echo "sdkit $(jq -r .version "$ROOT/.claude-plugin/plugin.json")" ;;
   where) echo "$ROOT" ;;
-  help|--help|-h) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//' ;;
+  help|--help|-h) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//' ;;
   *) echo "sdkit: unknown command '$cmd' (try: sdkit help)" >&2; exit 2 ;;
 esac
