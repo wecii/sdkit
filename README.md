@@ -6,8 +6,8 @@
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue)
 ![Hosts: Claude Code | Codex | OpenCode | Cursor | Gemini CLI](https://img.shields.io/badge/hosts-Claude%20Code%20%C2%B7%20Codex%20%C2%B7%20OpenCode%20%C2%B7%20Cursor%20%C2%B7%20Gemini%20CLI-informational)
 
-SDKit (`spec-driven-kit`, command `sdkit`) turns "ask the agent to build it" into a gated workflow:
-**plan → proposal with a Definition of Done → failing test → implementation → independent verification → PR.**
+SDKit (`spec-driven-kit`, command `sdkit`) turns "ask the agent to build it" into a gated workflow, from the first idea to the merged PR:
+**pre-spec → reviewed, versioned spec → Tech Lead approval → Jira subtasks → plan → proposal with a Definition of Done → failing test → implementation → independent verification → PR.**
 A phase machine blocks the shortcuts (code before a plan, push before verification), and a separate verifier agent, not the one that wrote the code, decides whether the work is done.
 
 It runs on **Claude Code, Codex, OpenCode, Cursor and Gemini CLI** ([supported agents](#supported-agents)), on **Go, Spring Boot / JVM, Python, Next.js, React Native** or any other stack ([supported stacks](#supported-stacks)), and it carries **no project facts**: each repo brings its own risk rubric, rules and checks.
@@ -36,6 +36,52 @@ AI agents are fast, but left alone they skip steps, mark their own homework and 
 The ~70% (tokens) and ~40% (time) figures are a single maintainer's measurements, not benchmarks: results depend on task mix, model and stack. Measure your own with `sdkit report task <task>`, which prints `N/A` rather than a guess where records are missing. Method and caveats: [docs/design-report.md](docs/design-report.md).
 
 ## How it works
+
+SDKit covers the path from a raw idea to a verified PR in two halves that meet at a Jira subtask: the **analyst side** produces an approved, versioned spec, and the **developer side** implements one subtask of it. Each half is a skill-driven flow with scripted gates.
+
+```mermaid
+flowchart LR
+  D["Discovery"] --> PS["Local Pre-spec<br/>git-ignored"]
+  PS --> GS["generate-specs"]
+  GS --> VS["Versioned Specs<br/>PRD, ADRs, feature specs, OpenSpec change"]
+  VS --> EGM["EGM Review before push<br/>independent, hash-bound"]
+  EGM --> TL{"Tech Lead PR Review"}
+  TL -->|"Changes"| US["update-specs"]
+  US --> VS
+  TL -->|"Approved"| MM["Merge main"]
+  MM --> GT["generate-tasks"]
+  GT --> JS["Jira Subtasks"]
+  JS --> DH["Developer Handoff"]
+  DH --> SDD["spec-driven-dev"]
+  SDD --> PRV["PR + Verification"]
+  SDD -.->|"spec defect: Blocked + change request"| US
+  PRV -.->|"change request after delivery"| US
+```
+
+| Lifecycle phase | Who / what | Output |
+|---|---|---|
+| **Discovery**, **Pre-spec** | The analyst, outside the kit. `sdkit prespec check <name>` verifies the pre-spec exists and stays git-ignored | A local pre-spec that is never committed |
+| **Specification** | `/generate-specs`: questions, PRD, ADRs, feature specs with stable AC ids, independent [EGM](https://github.com/google/elephant-goldfish-model) review, `openspec-propose`; one PR on `spec/<id>` only after a review PASS. `/update-specs` handles edits and change requests | A reviewed, versioned spec. The Tech Lead approves by merging |
+| **Task planning** | `/generate-tasks <id> --sha <SHA>`: traces every AC to a task, rejects dependency cycles, upserts Jira subtasks idempotently | Jira subtasks that pin the approved spec revision |
+| **Execution** | `/spec-driven-dev PROJ-123`: the phase machine below, one subtask per run; independent subtasks can run in parallel sessions | A verified diff with evidence |
+| **Delivery** | Commit, push and PR are denied until verified; you merge. Release steps come from `project.md` and are relayed, never run | A merged PR |
+| **Evolution** | Closeout and Value Report; a spec defect found while building becomes a change request that goes back to `update-specs` | Archived artifacts, report, change requests |
+
+**EGM is the spec's reviewer before anything is pushed.** [EGM](https://github.com/google/elephant-goldfish-model) (Elephant Goldfish Model) is a Claude Code plugin (`egm@egm`) whose `egm-review-loop` skill runs fresh-context reviewers against a document and a standard. `generate-specs` and `update-specs` run it per artifact (PRD, ADR, feature spec) and once more on the final OpenSpec change, with the rubric in `.sdkit/review.d/<artifact>.env`. `scripts/review.sh` keeps the evidence honest: the PASS is bound to the document's content hash, any edit makes it stale, a review without fresh isolation is `NOT_RUN` and never PASS, and `spec.sh publish` refuses without a fresh PASS. After `SPEC_REVIEW_MAX_ROUNDS` rounds a person decides. Without the plugin, the read-only `spec-reviewer` role runs the same review through `run-role.sh`. A review PASS is not approval; the Tech Lead's merge is.
+
+Seven principles hold across the whole path:
+
+1. **A pre-spec is a draft.** It is the spec's input, stays local and git-ignored, and is never committed or sent to the customer.
+2. **The spec is the decision.** Alignment and development go through the spec only.
+3. **Approval is the merge of the spec PR.** A review PASS is not approval. The version label (1.0, approved) is set by the last commit of the approval PR.
+4. **The developer does not write or change the spec.** A defect blocks the subtask and becomes a change request; work resumes only after the revised spec is merged and the subtask pins it.
+5. **Every subtask pins one spec revision** (`specSha`, a git commit). A subtask missing a contract field is refused at start.
+6. **Task creation is idempotent.** Running `generate-tasks` twice on the same spec updates the subtasks, it never duplicates them.
+7. **`spec-driven-dev` starts from the subtask.** In developer mode it never regenerates the PRD, architecture or spec.
+
+The kit does not run discovery, release or deploy for you. Setup and flows per environment: [Analyst and developer environments](#analyst-and-developer-environments). Without Jira, `/spec-driven-dev <description>` runs the developer half alone.
+
+### Inside `spec-driven-dev`
 
 You give the agent a task. SDKit moves it through a **phase machine** (`scripts/sdd.sh`). Each move has an exit condition that a script checks, so the agent cannot skip a step by deciding it is not needed. The path is not a straight line: some steps loop, some branch by risk, and failures have defined exits.
 
@@ -297,35 +343,13 @@ Adding a stack: [stacks/README.md](stacks/README.md).
 
 ## Requirements and pull requests
 
-- `git`, `jq`, `node` (for OpenSpec) and your stack's toolchain. `sdkit doctor` lists what is missing. macOS and Linux; Windows is not supported (the kit is bash).
+- `git`, `jq`, `node` (for OpenSpec) and your stack's toolchain. The analyst environment also uses the [EGM](https://github.com/google/elephant-goldfish-model) plugin for spec review (or the `spec-reviewer` role as fallback). `sdkit doctor` lists what is missing. macOS and Linux; Windows is not supported (the kit is bash).
 - Pull requests: Bitbucket (REST API), GitHub (`gh`) and GitLab (`glab`). `PR_HOST=auto` picks one from the origin URL ([docs/hosts.md](docs/hosts.md)).
 - `<project-dir>` is `.sdkit/` for every host. Repos set up before 1.0 keep their old directory until `sdkit upgrade --migrate`.
 
 ## Analyst and developer environments
 
-`sdkit init --env analyst|developer` picks an experience; without it nothing changes (`SDKIT_ENV=standalone`, the workflow above). The two environments split the work between two repos and hand over through a spec pinned to a git commit.
-
-```mermaid
-flowchart LR
-  subgraph A["Analyst env: specs repo"]
-    P["Pre-spec<br/>(git-ignored)"] --> GS["/generate-specs<br/>PRD, ADRs, feature specs"]
-    GS --> SR{"Independent spec review<br/>spec-reviewer / EGM"}
-    SR -->|"findings"| GS
-    SR -->|"PASS"| OP["openspec-propose<br/>proposal, design, tasks, specs"]
-    OP --> PUB["Publish: branch spec/id + one PR"]
-    PUB --> TL{{"Tech Lead merges = approval"}}
-    TL -->|"change request"| US["/update-specs"]
-    US --> SR
-    TL --> GT["/generate-tasks id --sha SHA<br/>Jira subtasks"]
-  end
-  subgraph D["Developer env: source repo"]
-    GT --> SD["/spec-driven-dev PROJ-123<br/>spec pinned, read-only"]
-    SD --> PH["Same phases and gates<br/>intake to done"]
-    PH --> EV["Evidence and PR link on the ticket"]
-    PH -->|"spec defect"| BL["sdd.sh block --spec-change<br/>change request in Jira"]
-    BL --> US
-  end
-```
+`sdkit init --env analyst|developer` picks an experience; without it nothing changes (`SDKIT_ENV=standalone`, the workflow above). The two environments split the work between two repos and hand over through a spec pinned to a git commit. The end-to-end picture is under [How it works](#how-it-works).
 
 - **analyst** (a specs repo): `/generate-specs` turns a pre-spec into a reviewed spec, outputs it as an OpenSpec change and opens one PR. The Tech Lead approves by merging. `/update-specs` changes an approved one, `/generate-tasks` writes Jira subtasks from it. The review is bound to the document's content hash, so any edit makes it stale.
 - **developer** (a source repo): `/spec-driven-dev PROJ-123` runs the same phases and gates, but the task and its pinned spec revision come from Jira. A spec defect never gets worked around: it becomes a change request and the task stays blocked until the revised spec is pinned.
