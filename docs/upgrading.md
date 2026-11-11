@@ -236,3 +236,7 @@ No manual step; nothing changes until you opt in. `SDKIT_ENV` defaults to `stand
 ## 1.6.0: generate-specs outputs an OpenSpec change
 
 Analyst repos only. `generate-specs` now drafts in `work/spec-draft/`, asks you the decisions the review finds (instead of listing findings), then outputs an OpenSpec change (`proposal.md`, `design.md`, `tasks.md`, `specs/`) into `specs/<id>/` through `openspec-propose`. The analyst env now installs OpenSpec: run `sdkit init --env analyst --install-openspec` (or `openspec init`) once if `openspec/` is missing. New setting `ANALYST_LANGUAGE` (default `tr`) is appended to `sdkit.env` by `sdkit upgrade`. The default `SPEC_REVIEW_MAX_ROUNDS` is now 4; an existing file keeps its own value (`2`), so raise it by hand. Specs already published under `specs/<id>/` keep their layout and are changed with `update-specs`.
+
+## 1.6.1: permissions for the work directory
+
+No manual step. `sdkit upgrade` adds Claude Code allow entries (when missing) so agents can run `spec.sh`, `review.sh`, `sdkit prespec` and create or move files under `<project-dir>/work/` and the OpenSpec change into `specs/` without a prompt. A `work` directory that is a symlink outside the repo still prompts: Claude Code always asks for writes outside the project.
