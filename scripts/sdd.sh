@@ -22,6 +22,12 @@
 #   and `_verdict` are for the hooks and run-role.sh only (guard-pr.sh refuses them from the model's shell). Spec: docs/design-evidence.md.
 # A refused move leaves the state untouched, prints why, and records phase.reject with a --reason (telemetry). Two advances at once: one wins.
 # State lives in <project-dir>/.sdd/state.json (git-ignored).
+# Managed execution (SDD_MANAGED=on, F09/F10/F12; references/managed.md): the same phases and gates, the task comes from a Jira subtask.
+#   start --ticket KEY [--risk R] [--profile P]      fetch + validate the task contract, pinned specSha in SPECS_DIR, deps ready; writes the DoD from its ACs
+#   block --spec-change --reason R [--section S]     files a change request (jira.sh) and sets .blocked; advance and gate refuse while it is set
+#   revalidate --sha NEW                             a blocked task resumes on a new APPROVED spec revision; old evidence is dropped, back to intake/proposed
+#   evidence-sync [--pr URL] [--status S]            evidence summary + PR link as a Jira comment, then the status; idempotent
+#   done --merged                                    = advance done: the PR head must be merged into the resolved base
 set -u
 SDKIT_ENV_VERIFY_BASE="${VERIFY_BASE:-}"; SDKIT_CI_BASE=""   # CI: the base ref as the CI environment gave it, before any settings file is read
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
@@ -33,6 +39,8 @@ STATE="$STATE_DIR/state.json"
 PHASES="intake proposed red green verified pr done"
 PROFILES="small standard high-assurance"
 WF="$(dirname "${BASH_SOURCE[0]}")/workflow.sh"   # policy: what a profile adds (agents in flight, ...). It reads the state; only this script moves it
+managed() { [ "${SDD_MANAGED:-}" = on ]; }   # managed execution (F09/F10/F12): see the section "managed execution" below
+SPECS="${SPECS_DIR:-specs}"; SPECS="${SPECS%/}"   # the read-only approved-specs submodule (managed mode)
 
 # tele <type> [flags]: one telemetry event for the open task (scripts/telemetry.sh). Off unless TELEMETRY=1; a failure here never changes what sdd does.
 TELE="$(dirname "${BASH_SOURCE[0]}")/telemetry.sh"; TELE_PHASE=""
@@ -127,6 +135,7 @@ has_dod() {  # a "Definition of Done" heading followed by at least one list item
 has_race_section() { grep -qiE '^#+[ \t]+.*(race|ordering|timing)' "$1"; }
 
 cmd_start() {
+  if managed; then cmd_start_managed "$@"; return; fi
   local slug="${1:-}" risk="" proposal="" why profile=standard; shift || true
   while [ $# -gt 0 ]; do case "$1" in --risk) risk="$2"; shift ;; --proposal) proposal="$2"; shift ;; --profile) profile="$2"; shift ;; *) die "unknown option $1" ;; esac; shift; done
   [ -n "$slug" ] || die "usage: start <slug> --risk <low|medium|high> --proposal <path>"
@@ -163,7 +172,9 @@ write_attestation() {
   jq -n --arg t "$(get .task)" --arg r "$(get .risk)" --arg pf "$(get .profile)" --arg v "$(get .verdict.result)" --arg f "$1" \
         --argjson ev "$(jq -c '(.evidence // {}) | with_entries(.value |= {result,trust,fingerprint})' "$STATE" 2>/dev/null || echo '{}')" \
         --arg fl "$fl" --arg b "$(diff_base)" --arg k "$(jq -r .version "$PLUGIN_ROOT/.claude-plugin/plugin.json" 2>/dev/null || cat "$PROJECT_DIR/$KIT_DIR/.scaffold-version" 2>/dev/null || echo unknown)" --arg now "$(date -u +%FT%TZ)" \
-    '{task:$t,risk:$r,profile:($pf | if . == "" then "standard" else . end),floor:$fl,verdict:$v,evidence:$ev,fingerprint:$f,base:$b,kit:$k,at:$now}' > "$dir/$(get .task).json"
+        --arg tk "$(get .ticket)" --arg ss "$(get .specSha)" --arg si "$(get .specId)" \
+    '{task:$t,risk:$r,profile:($pf | if . == "" then "standard" else . end),floor:$fl,verdict:$v,evidence:$ev,fingerprint:$f,base:$b,kit:$k,at:$now}
+     + (if $tk != "" then {ticket:$tk,specId:$si,specSha:$ss} else {} end)' > "$dir/$(get .task).json"   # (managed tasks only: a standalone attestation is unchanged)
   echo "attestation written: $KIT_DIR/attestations/$(get .task).json (commit it with the change)"
 }
 
@@ -184,10 +195,20 @@ entry_rule() {
     done) echo "none (the PR is merged: the user's call)" ;;
   esac
 }
+# managed mode adds to these (never replaces them); empty when the move has nothing extra
+managed_rule() {
+  case "$1" in
+    proposed) echo "the Jira task contract is complete and still pins the task's specSha, the specSha resolves in $SPECS/, dependencies are done, dod-check.sh passes" ;;
+    verified) echo "the pinned specSha still resolves in $SPECS/" ;;
+    done) echo "the PR head recorded at 'pr' is merged into the resolved base (never self-declared)" ;;
+  esac
+}
 cmd_transitions() {
   local prev="" p
   for p in $PHASES; do [ -n "$prev" ] && printf '%-18s %s\n' "$prev > $p" "$(entry_rule "$p")"; prev="$p"; done
+  if managed; then for p in proposed verified done; do printf '%-18s %s\n' "  managed: $p" "$(managed_rule "$p")"; done; fi
   printf '%-18s %s\n' "verified|pr > verified" "re-verification, only while the verified diff is stale: the same checks as verified"
+  managed && printf '%-18s %s\n' "blocked > intake" "managed: sdd.sh revalidate --sha <new approved revision>; clears .blocked, drops the old evidence, then the proposed gate again"
   printf '%-18s %s\n' "any > (aborted)" "sdd.sh abort; the only way back, and it ends the task"
 }
 
@@ -198,6 +219,8 @@ cmd_advance() {
   local cur risk profile want seq xf="." xa=() att=""; cur="$(get .phase)"; risk="$(get .risk)"; profile="$(get .profile)"; profile="${profile:-standard}"   # (no profile = a task opened before F03)
   seq="$(get .evseq)"; seq="${seq:-0}"   # the evidence this advance judged; the move below is refused if more arrives meanwhile
   TELE_PHASE="$target"
+  [ -z "$(get .blocked.kind)" ] || reject out-of-phase "task '$(get .task)' is blocked by a $(get .blocked.kind) request ($(get .blocked.ref)): no phase moves until the spec is revised and approved. Resume with: sdd.sh revalidate --sha <new approved revision>"
+  local mg=0; [ "$(get .managed)" = true ] && mg=1   # a task opened with --ticket keeps its managed gates whatever SDD_MANAGED says later
   [ "$(index_of "$target")" -ge 0 ] || reject unknown-phase "unknown phase '$target' (phases: $PHASES)"
   want="$(next_phase "$cur")"
   # re-verification: once verified, a later edit makes the evidence stale and the only way forward is to verify again (same checks, same gate)
@@ -216,7 +239,8 @@ cmd_advance() {
       if [ "$risk" = high ]; then
         local design; design="$(dirname "$proposal")/design.md"
         [ -f "$design" ] && has_race_section "$design" || reject no-design "high risk: $(dirname "$(get .proposal)")/design.md needs a race / ordering / timing scenario section."
-      fi ;;
+      fi
+      [ "$mg" = 1 ] && managed_proposed_gate "$proposal" ;;
     red)
       [ -n "$test_cmd" ] || reject no-artifact "--test-cmd is required: the command that runs the new tests"
       run_test_cmd "$test_cmd" && reject tests-pass "the tests PASS, so they prove nothing yet. They must fail for the right reason first (see $KIT_DIR/.sdd/last-test.log)."
@@ -232,6 +256,7 @@ cmd_advance() {
     verified)
       enforce_floor "$risk"
       [ -f "$PROJECT_DIR/$(get .proposal)" ] || reject no-artifact "proposal not found: $(get .proposal) (it was there at 'proposed')"
+      [ "$mg" = 1 ] && { m_sha "$(get .specSha)" || reject missing-artifact "$M_WHY"; }
       wf_gate verified "$profile"
       local fp; fp="$(fingerprint)" || reject no-fingerprint "cannot fingerprint the diff (see the message above)"
       if ! needs_verifier "$risk" "$profile"; then
@@ -252,13 +277,19 @@ cmd_advance() {
       fi
       evidence_gate live
       xf='.verifiedFingerprint=$x'; xa=(--arg x "$fp"); att="$fp" ;;
-    pr) evidence_gate live ;;   # high risk: the evidence must still match the diff that goes into the PR
-    done) evidence_gate recorded ;;   # high risk: the merge moved the diff, so the check is against what was verified
+    pr) evidence_gate live   # high risk: the evidence must still match the diff that goes into the PR
+        if [ "$mg" = 1 ]; then   # managed: remember what goes into the PR, so `done` can check that exactly this was merged
+          local ph pb; ph="$(cd "$PROJECT_DIR" && git rev-parse -q --verify HEAD)" || reject no-artifact "cannot read HEAD"
+          pb="$(cd "$PROJECT_DIR" && git rev-parse --abbrev-ref HEAD 2>/dev/null)"
+          xf='.prHead=$h | .prBranch=$hb | .prBase=$bb'; xa=(--arg h "$ph" --arg hb "$pb" --arg bb "$(diff_base)")
+        fi ;;
+    done) evidence_gate recorded   # high risk: the merge moved the diff, so the check is against what was verified
+          [ "$mg" = 1 ] && { m_merged || reject out-of-phase "$M_WHY"; } ;;
   esac
   # the move is made only if the phase is still the one this advance checked: a second advance at the same moment loses here
   local eg=0; case "$target" in verified|pr|done) eg=1 ;; esac   # the gates that read evidence refuse to move on evidence that changed after they judged it
   put "${xa[@]+"${xa[@]}"}" --arg p "$target" --arg c "$cur" --argjson sq "$seq" --argjson eg "$eg" --arg now "$(date -u +%FT%TZ)" \
-    'if .phase != $c then error("phase moved") elif $eg == 1 and (.evseq // 0) != $sq then error("evidence moved") else '"$xf"' | .phase=$p | .history += [{phase:$p,at:$now}] end' 2>/dev/null \
+    'if .phase != $c then error("phase moved") elif .blocked != null then error("blocked") elif $eg == 1 and (.evseq // 0) != $sq then error("evidence moved") else '"$xf"' | .phase=$p | .history += [{phase:$p,at:$now}] end' 2>/dev/null \
     || reject concurrent "the task changed while this advance was running (phase '$(get .phase)', evidence recorded meanwhile or another advance won); nothing was changed by this call."
   TELE_PHASE=""
   [ -n "$att" ] && write_attestation "$att"   # after the move: a refused or lost advance never leaves a proof behind
@@ -527,7 +558,10 @@ cmd_gate() {
       local rel; rel="$(sdkit_relpath "$PROJECT_DIR" "$2")"   # docs/../src/x and .sdkit/./.sdd/x are judged as what they really are
       [ -n "$rel" ] || exit 0
       case "$rel" in "$KIT_DIR"/.sdd/*|"$KIT_DIR"/attestations/*) echo "The workflow state and attestations are written only by sdd.sh and the verifier hook."; exit 1 ;; esac
+      if managed; then case "$rel" in "$SPECS"|"$SPECS"/*)
+        echo "Managed mode: $SPECS/ is the read-only approved-specs submodule and is never edited from this repo. A spec defect is a change request: sdd.sh block --spec-change --reason <why> [--section <section>]."; exit 1 ;; esac; fi
       matches_glob_list "$rel" "$KIT_DIR/*,openspec/*,docs/*,*.md,${SDD_FREE_GLOBS:-}" && exit 0
+      [ -n "$phase" ] && [ -n "$(get .blocked.kind)" ] && { echo "Task '$(get .task)' is blocked by a $(get .blocked.kind) request ($(get .blocked.ref)): '$rel' may not change until sdd.sh revalidate --sha <new approved revision>."; exit 1; }
       case "$phase" in
         "") echo "No spec-driven task is open, so '$rel' may not change yet. Start one with the spec-driven-dev skill (it opens the task after you confirm the risk label)."; exit 1 ;;
         intake) echo "Task '$(get .task)' is in 'intake': write the proposal with a Definition of Done and run 'sdd.sh advance proposed' before changing '$rel'."; exit 1 ;;
@@ -536,6 +570,7 @@ cmd_gate() {
           echo "Phase 'proposed' is test-first: only test files may change. Write the failing test, then run 'sdd.sh advance red --test-cmd <cmd>'. '$rel' is not a test file (SDD_TEST_GLOBS)."; exit 1 ;;
       esac ;;
     push)
+      [ -n "$phase" ] && [ -n "$(get .blocked.kind)" ] && { echo "Task '$(get .task)' is blocked by a $(get .blocked.kind) request ($(get .blocked.ref)): no push or PR until sdd.sh revalidate --sha <new approved revision>."; exit 1; }
       case "$phase" in
         "") echo "Pushing or opening a PR outside a spec-driven task. Start one with the spec-driven-dev skill."; exit 1 ;;
         verified|pr) cmd_check_fresh 2>/dev/null || { echo "The diff changed after verification. Re-run the verifier, then 'sdd.sh advance verified'."; exit 1; } ;;
@@ -614,12 +649,209 @@ cmd_ci_check() {
   return 1
 }
 
+# --- managed execution (F09/F10/F12, SDD_MANAGED=on; docs/design-role-aware.md "Managed execution", skills/spec-driven-dev/references/managed.md) -------
+# The task is a Jira subtask whose task contract (scripts/jira.sh) pins an approved spec revision (specSha) in the read-only SPECS_DIR submodule.
+# No second state machine: the phases and every gate above stay as they are; managed mode only ADDS checks (managed_rule) and one orthogonal flag,
+# .blocked, that stops every advance and gate until `revalidate` moves the task onto a new approved revision. A Jira or git call that fails refuses:
+# it never records success and never moves a phase. SDD_JIRA_CMD replaces scripts/jira.sh (tests, or a bridge with the same verbs and exit codes);
+# the contract is always validated by the kit's own jira.sh validate-task (no network).
+M_WHY=""; M_TASK=""
+JIRA_SH="$(kit_cmd "${SDD_JIRA_CMD:-}" scripts/jira.sh)"; JIRA_VALIDATE="$(dirname "${BASH_SOURCE[0]}")/jira.sh"; SPEC_SH="$(dirname "${BASH_SOURCE[0]}")/spec.sh"
+jira_call() { "$JIRA_SH" "$@"; }
+
+# m_contract <KEY>: M_TASK = the task contract, fetched and validated (jira.sh names what is missing on stderr). 1 + M_WHY on any failure.
+m_contract() {
+  local rc; M_TASK="$(jira_call fetch "$1")"; rc=$?
+  if [ "$rc" != 0 ] || [ -z "$M_TASK" ]; then M_TASK=""; M_WHY="the task contract of $1 could not be read (jira.sh fetch exit $rc: 3 egress/auth, 4 contract incomplete, 5 not found)"; return 1; fi
+  printf '%s' "$M_TASK" | "$JIRA_VALIDATE" validate-task - >/dev/null || { M_TASK=""; M_WHY="the task contract of $1 is incomplete or malformed (jira.sh validate-task)"; return 1; }
+}
+# m_deps <KEY>: 0 only when jira.sh deps-ready says every dependency is done; 1 + M_WHY (the pending list, or the failed call)
+m_deps() {
+  local out rc; out="$(jira_call deps-ready "$1")"; rc=$?
+  case "$rc" in
+    0) return 0 ;;
+    1) M_WHY="the dependencies of $1 are not done: $(printf '%s' "$out" | jq -r '[.pending[]? | "\(.key) (\(.status))"] | join(", ")' 2>/dev/null). Start it when they are." ;;
+    *) M_WHY="the dependencies of $1 could not be checked (jira.sh deps-ready exit $rc)" ;;
+  esac
+  return 1
+}
+# m_sha <sha>: the pinned revision is a commit in the SPECS_DIR submodule AND its checked-out HEAD contains it. 1 + M_WHY otherwise.
+m_sha() {
+  local d="$PROJECT_DIR/$SPECS" head
+  case "$1" in *[!0-9a-f]*|"") M_WHY="specSha '$1' is not a commit id"; return 1 ;; esac
+  [ "${#1}" = 40 ] || { M_WHY="specSha '$1' is not a full 40-character commit id"; return 1; }
+  [ -e "$d/.git" ] || { M_WHY="$SPECS/ is not a checked-out git submodule (git submodule update --init $SPECS)"; return 1; }
+  git -C "$d" cat-file -e "$1^{commit}" 2>/dev/null || { M_WHY="the pinned specSha $1 is not a commit in $SPECS/ (an unknown or unpublished revision is refused; git -C $SPECS fetch if it is new)"; return 1; }
+  head="$(git -C "$d" rev-parse -q --verify HEAD)" || { M_WHY="$SPECS/ has no checked-out HEAD"; return 1; }
+  git -C "$d" merge-base --is-ancestor "$1" "$head" 2>/dev/null || { M_WHY="$SPECS/ is checked out at ${head:0:12}, which does not contain the pinned specSha ${1:0:12}: update the submodule (git -C $SPECS checkout $1, then commit the pointer)"; return 1; }
+}
+# m_merged: the PR head recorded at `advance pr` (and the branch's tip, when it is still here) is in the resolved base. 1 + M_WHY otherwise.
+m_merged() {
+  local base head br tip; head="$(get .prHead)"; br="$(get .prBranch)"
+  [ -n "$head" ] || { M_WHY="no PR head was recorded at 'pr', so the merge cannot be checked"; return 1; }
+  (cd "$PROJECT_DIR" && git fetch -q origin) >/dev/null 2>&1 || true   # best effort: an offline check uses the refs it has, and fails closed below
+  base="$(diff_base)"
+  (cd "$PROJECT_DIR" && git rev-parse -q --verify "$base^{commit}" >/dev/null) || { M_WHY="the base '$base' is not a known commit (fetch it)"; return 1; }
+  (cd "$PROJECT_DIR" && git merge-base --is-ancestor "$head" "$base") || { M_WHY="the PR head ${head:0:12} (${br:-?}) is not merged into $base: 'done' comes after the merge, and is never declared"; return 1; }
+  if [ -n "$br" ] && [ "$br" != HEAD ] && tip="$(cd "$PROJECT_DIR" && git rev-parse -q --verify "refs/heads/$br")"; then
+    (cd "$PROJECT_DIR" && git merge-base --is-ancestor "$tip" "$base") || { M_WHY="$br has commits after the PR head that are not in $base"; return 1; }
+  fi
+}
+# m_write_dod <file>: the proposal, its Definition of Done seeded from M_TASK's acceptance criteria in the dod-check.sh format
+m_write_dod() {
+  mkdir -p "$(dirname "$1")" && printf '%s' "$M_TASK" | jq -r '. as $t |
+    "# \(.key // .externalId): managed task\n",
+    "Generated by sdd.sh from the Jira task contract of \(.key // "?") (\(.externalId)): spec \(.specId) v\(.specVersion) at \(.specSha).",
+    "The approved spec is the source of truth: the PRD, architecture and spec are not regenerated here. A spec defect is `sdd.sh block --spec-change`.",
+    "Refine each condition from the spec text of its acceptance criterion; keep the D ids and a Verified-by method on every line.\n",
+    "## Scope\n", (.scope[] | "- \(.)"), "",
+    "## Dependencies\n", (if (.dependencies | length) == 0 then "- none" else (.dependencies[] | "- \(.)") end), "",
+    "## Definition of Done\n",
+    (.acceptanceCriteria | to_entries[] | "- D\(.key + 1): acceptance criterion \(.value) of spec \($t.specId) holds | Verified by: automated test")' > "$1.tmp" && mv "$1.tmp" "$1"
+}
+# the managed additions to `advance proposed` (after the standalone checks, which all still apply)
+managed_proposed_gate() {
+  local t pin now dc out; t="$(get .ticket)"; pin="$(get .specSha)"
+  m_contract "$t" || reject missing-field "$M_WHY"
+  now="$(printf '%s' "$M_TASK" | jq -r .specSha)"
+  [ "$now" = "$pin" ] || reject inconsistent "the task contract of $t now pins ${now:0:12}, not ${pin:0:12} that this task was opened on. A spec change goes through sdd.sh block --spec-change and sdd.sh revalidate --sha <approved revision>."
+  m_sha "$pin" || reject missing-artifact "$M_WHY"
+  m_deps "$t" || reject out-of-phase "$M_WHY"
+  dc="$(dirname "${BASH_SOURCE[0]}")/dod-check.sh"
+  if [ -x "$dc" ]; then out="$("$dc" "$1" 2>&1)" || { printf '%s\n' "$out" >&2; reject no-dod "$(get .proposal): the Definition of Done does not pass dod-check.sh (D<n>: <condition> | Verified by: <method>)."; }; fi
+}
+
+cmd_start_managed() {
+  local key="" risk="" profile=standard why tr slug proposal kept=""
+  while [ $# -gt 0 ]; do case "$1" in --ticket) key="${2:-}"; shift ;; --risk) risk="${2:-}"; shift ;; --profile) profile="${2:-}"; shift ;;
+    *) die "managed mode (SDD_MANAGED=on): tasks come from Jira. Usage: start --ticket <KEY> [--risk low|medium|high] [--profile small|standard|high-assurance] (got '$1')" ;; esac; shift; done
+  [ -n "$key" ] || die "managed mode (SDD_MANAGED=on): tasks come from Jira. Start one with: sdd.sh start --ticket <KEY>"
+  printf '%s' "$key" | grep -Eq '^[A-Z][A-Z0-9_]*-[0-9]+$' || die "--ticket '$key' is not a Jira issue key (PROJ-123)"
+  case "$risk" in ""|low|medium|high) ;; *) die "--risk must be low, medium or high (it can only raise the task's risk)" ;; esac
+  case " $PROFILES " in *" $profile "*) ;; *) die "--profile must be one of: $PROFILES" ;; esac
+  [ -f "$STATE" ] && die "task '$(get .task)' is still open (phase $(get .phase)). Finish it or run: sdd.sh abort"
+  [ "$SDD_MODE" = off ] || why="$(floor_validate "${RISK_FLOOR_GLOBS:-}")" || die "RISK_FLOOR_GLOBS is invalid: $why (expected level:glob,level:glob with level low|medium|high)"
+  m_contract "$key" || die "$M_WHY"
+  tr="$(printf '%s' "$M_TASK" | jq -r .risk)"
+  [ -z "$risk" ] || [ "$(risk_rank "$risk")" -ge "$(risk_rank "$tr")" ] || die "the task contract of $key says risk $tr: a label can raise it, never lower it"
+  [ -n "$risk" ] || risk="$tr"
+  [ "$profile" = small ] && [ "$risk" != low ] && die "profile small is for low risk only (this task is $risk). Use standard or high-assurance; a lighter profile never lowers a gate."
+  m_sha "$(printf '%s' "$M_TASK" | jq -r .specSha)" || die "$M_WHY"
+  m_deps "$key" || die "$M_WHY"
+  slug="$key"; proposal="$KIT_DIR/work/$slug/proposal.md"
+  if [ -f "$PROJECT_DIR/$proposal" ]; then kept=1; else m_write_dod "$PROJECT_DIR/$proposal" || die "cannot write $proposal"; fi
+  mkdir -p "$STATE_DIR"
+  sdkit_lock "$STATE"
+  if [ -f "$STATE" ]; then sdkit_unlock "$STATE"; die "task '$(get .task)' is still open (phase $(get .phase)). Finish it or run: sdd.sh abort"; fi
+  jq -n --arg t "$slug" --arg r "$risk" --arg p "$proposal" --arg pf "$profile" --arg now "$(date -u +%FT%TZ)" --arg k "$key" --argjson m "$M_TASK" \
+    '{task:$t,risk:$r,profile:$pf,proposal:$p,phase:"intake",startedAt:$now,history:[{phase:"intake",at:$now}],
+      managed:true,ticket:$k,externalId:$m.externalId,specId:$m.specId,specVersion:($m.specVersion|tostring),specSha:$m.specSha,taskRisk:$m.risk,
+      deps:$m.dependencies,acceptanceCriteria:$m.acceptanceCriteria,scope:$m.scope,parent:$m.parent}' > "$STATE"
+  sdkit_unlock "$STATE"
+  tele task.start --task "$slug" --risk "$risk" --profile "$profile" --phase intake
+  [ "${TELEMETRY:-}" = 1 ] && [ "$profile" != standard ] && [ -x "$WF" ] && "$WF" announce >/dev/null 2>&1
+  [ -n "$kept" ] && echo "sdd: kept the existing $proposal (delete it before start to regenerate it from the contract)" >&2
+  echo "task '$slug' opened (managed: spec $(get .specId) v$(get .specVersion) at $(get .specSha | cut -c1-12), risk=$risk, profile=$profile, phase=intake). The DoD is seeded from the task's acceptance criteria in $proposal; refine it from the spec, then: sdd.sh advance proposed"
+}
+
+# block --spec-change --reason R [--section S] [--proposal TEXT]: the change request is filed first; the flag is set only when that call succeeded
+cmd_block() {
+  need_state
+  local kind="" reason="" section="" prop="" t body out rc ref
+  while [ $# -gt 0 ]; do case "$1" in --spec-change) kind=spec-change ;; --reason) reason="${2:-}"; shift ;; --section) section="${2:-}"; shift ;; --proposal) prop="${2:-}"; shift ;; *) die "unknown option $1" ;; esac; shift; done
+  [ "$kind" = spec-change ] && [ -n "${reason//[[:space:]]/}" ] || die "usage: block --spec-change --reason <what in the spec is wrong> [--section <spec section>] [--proposal <suggested fix>]"
+  [ "$(get .managed)" = true ] || die "block --spec-change is for managed tasks (opened with start --ticket); this one has no ticket"
+  [ -z "$(get .blocked.kind)" ] || die "already blocked by $(get .blocked.ref) ($(get .blocked.kind), $(get .blocked.at)). Resume with: sdd.sh revalidate --sha <new approved revision>"
+  t="$(get .ticket)"
+  body="$(jq -nc --arg r "$reason" --arg s "$section" --arg p "$prop" --arg id "$(get .specId)" --arg sha "$(get .specSha)" \
+    '{reason:$r,specId:$id,specSha:$sha} + (if $s != "" then {section:$s} else {} end) + (if $p != "" then {proposal:$p} else {} end)')"
+  out="$(jira_call change-request "$t" "$body")"; rc=$?
+  ref="$(printf '%s' "$out" | jq -r '.key // empty' 2>/dev/null)"
+  [ "$rc" = 0 ] && [ -n "$ref" ] || die "the change request for $t could not be filed (jira.sh change-request exit $rc): the task is NOT blocked and nothing was recorded. Fix the Jira access and run this again; do not keep implementing against the defect."
+  put --arg r "$ref" --arg why "$reason" --arg s "$section" --arg now "$(date -u +%FT%TZ)" \
+    '.blocked = {kind:"spec-change",ref:$r,reason:$why,section:(if $s == "" then null else $s end),at:$now} | .evseq = ((.evseq // 0) + 1)' \
+    || die "the change request $ref was filed, but the state could not be written: run 'sdd.sh block' again only after checking $ref (it would file a second one)"
+  if jira_call transition "$t" "${JIRA_BLOCKED_STATUS:-Blocked}" >/dev/null; then put '.blocked.transitioned = true'; echo "$t moved to '${JIRA_BLOCKED_STATUS:-Blocked}'"
+  else put '.blocked.transitioned = false'; echo "sdd: warning: $t could not be moved to '${JIRA_BLOCKED_STATUS:-Blocked}' (JIRA_BLOCKED_STATUS); the change request and the block stand" >&2; fi
+  echo "blocked: spec change request $ref filed against $t. advance and gate refuse until: sdd.sh revalidate --sha <new approved revision>"
+}
+
+# revalidate --sha NEW: only while blocked. NEW must differ from the pinned SHA, be approved (spec.sh approved-sha in the submodule) and be what the task
+# contract now pins; the intake checks run again. Then the flag is cleared, the old revision's evidence is dropped and the proposed gate is run again.
+cmd_revalidate() {
+  need_state
+  local new="" full old t id cur r tr
+  while [ $# -gt 0 ]; do case "$1" in --sha) new="${2:-}"; shift ;; *) die "unknown option $1" ;; esac; shift; done
+  [ -n "$new" ] || die "usage: revalidate --sha <new approved spec revision>"
+  [ "$(get .managed)" = true ] || die "revalidate is for managed tasks (opened with start --ticket)"
+  [ -n "$(get .blocked.kind)" ] || die "revalidate only resumes a blocked task (sdd.sh block --spec-change); '$(get .task)' is not blocked"
+  old="$(get .specSha)"; t="$(get .ticket)"; id="$(get .specId)"
+  full="$(git -C "$PROJECT_DIR/$SPECS" rev-parse -q --verify "$new^{commit}" 2>/dev/null)" || die "$new is not a commit in $SPECS/ (git -C $SPECS fetch)"
+  [ "$full" != "$old" ] || die "$new is the revision the task is already pinned to: a blocked task resumes only on a changed, approved spec revision"
+  ( unset SPECS_DIR BASE_BRANCH; CLAUDE_PROJECT_DIR="$PROJECT_DIR/$SPECS" "$SPEC_SH" approved-sha "$id" --sha "$full" ) >&2 \
+    || die "spec $id is not approved at ${full:0:12} (spec.sh approved-sha in $SPECS/): the change request must be approved and merged first"
+  m_contract "$t" || die "$M_WHY"
+  [ "$(printf '%s' "$M_TASK" | jq -r .specId)" = "$id" ] || die "the task contract of $t now names spec '$(printf '%s' "$M_TASK" | jq -r .specId)', not '$id': abort and start the task again"
+  [ "$(printf '%s' "$M_TASK" | jq -r .specSha)" = "$full" ] || die "the task contract of $t still pins $(printf '%s' "$M_TASK" | jq -r .specSha | cut -c1-12): update the subtask to ${full:0:12} first (generate-tasks / jira.sh upsert), then run this again"
+  m_sha "$full" || die "$M_WHY"
+  m_deps "$t" || die "$M_WHY"
+  r="$(get .risk)"; tr="$(printf '%s' "$M_TASK" | jq -r .risk)"
+  [ "$(risk_rank "$tr")" -gt "$(risk_rank "$r")" ] && r="$tr"   # the revised task can raise the risk, never lower it
+  [ "$(get .profile)" = small ] && [ "$r" != low ] && die "the revised task is risk $r, which profile small does not allow: sdd.sh abort and start it again with --profile standard"
+  [ -f "$PROJECT_DIR/$(get .proposal)" ] && cp "$PROJECT_DIR/$(get .proposal)" "$PROJECT_DIR/$(get .proposal).prev"
+  m_write_dod "$PROJECT_DIR/$(get .proposal)" || die "cannot write $(get .proposal)"
+  cur="$(get .phase)"
+  put --arg s "$full" --arg o "$old" --arg r "$r" --argjson m "$M_TASK" --argjson back "$([ "$(index_of "$cur")" -ge "$(index_of proposed)" ] && echo true || echo false)" --arg now "$(date -u +%FT%TZ)" '
+    if .blocked == null or .specSha != $o then error("changed") else . end
+    | .revalidations = ((.revalidations // []) + [{from:$o,to:$s,ref:.blocked.ref,phase:.phase,at:$now}])
+    | .specSha = $s | .specVersion = ($m.specVersion | tostring) | .acceptanceCriteria = $m.acceptanceCriteria | .deps = $m.dependencies | .scope = $m.scope
+    | .taskRisk = $m.risk | .risk = $r
+    | del(.blocked, .verdict, .evidence, .verifiedFingerprint, .spawns, .testCmd, .prHead, .prBranch, .prBase, .synced, .syncComment)
+    | .evseq = ((.evseq // 0) + 1)
+    | if $back then .phase = "intake" | .history += [{phase:"intake",at:$now,reason:"revalidate"}] else . end' \
+    || die "the task changed while revalidating; nothing was changed by this call"
+  rm -f "$PROJECT_DIR/$KIT_DIR/attestations/$(get .task).json"   # the old revision's proof must not satisfy ci-check for the new one
+  echo "revalidated: '$(get .task)' is pinned to $id v$(get .specVersion) at ${full:0:12}; the block and the evidence of ${old:0:12} are gone (the old DoD is in $(get .proposal).prev)"
+  if [ "$cur" != intake ]; then ( cmd_advance proposed ) || echo "sdd: the proposal gate did not hold yet: fix what it names, then sdd.sh advance proposed" >&2; fi
+  return 0
+}
+
+# evidence-sync [--pr URL] [--status S|none]: the evidence summary and the PR link as a comment on the ticket, then the status (default JIRA_REVIEW_STATUS,
+# else "In Review"). Idempotent: the same evidence, PR and status are sent once; a failed call records nothing, and a re-run does not repeat a posted comment.
+cmd_evidence_sync() {
+  need_state
+  local pr="" st="${JIRA_REVIEW_STATUS:-In Review}" t fp key text
+  while [ $# -gt 0 ]; do case "$1" in --pr) pr="${2:-}"; shift ;; --status) st="${2:-}"; shift ;; *) die "unknown option $1" ;; esac; shift; done
+  [ "$(get .managed)" = true ] || die "evidence-sync is for managed tasks (opened with start --ticket)"
+  [ -z "$(get .blocked.kind)" ] || die "the task is blocked by $(get .blocked.ref): there is no evidence to report until it is revalidated"
+  case "$(get .phase)" in verified|pr) ;; *) die "evidence-sync reports verified evidence: the task is in '$(get .phase)'" ;; esac
+  fp="$(get .verifiedFingerprint)"
+  [ -n "$fp" ] && [ "$fp" = "$(fingerprint)" ] || die "the diff changed after verification: re-verify first (sdd.sh advance verified), then sync"
+  pr="${pr:-$(get .prUrl)}"; t="$(get .ticket)"; [ "$st" = none ] && st=""
+  key="$fp|$pr|$st"
+  [ "$(get .synced.key)" = "$key" ] && { echo "evidence-sync: $t already has this evidence${pr:+ and PR}; nothing sent"; return 0; }
+  text="$(printf 'sdkit evidence for %s (task %s)\nspec: %s v%s at %s\nrisk: %s, profile: %s, phase: %s, verifier verdict: %s\n%s\ndiff fingerprint: %s\nPR: %s' \
+    "$t" "$(get .task)" "$(get .specId)" "$(get .specVersion)" "$(get .specSha)" "$(get .risk)" "$(get .profile)" "$(get .phase)" "$(get .verdict.result)" \
+    "$(ev_table recorded $EV_ROLES | awk -F'\t' '{printf "%s: %s (verdict %s, trust %s)\n", $1, $2, $3, $4}')" "$fp" "${pr:-not open yet}")"
+  if [ "$(get .syncComment)" != "$key" ]; then
+    jira_call comment "$t" "$text" >/dev/null || die "the evidence comment on $t failed: nothing was recorded, run evidence-sync again"
+    put --arg k "$key" --arg pr "$pr" '.syncComment = $k | .prUrl = $pr' || die "the comment is on $t but the state could not be written"
+  fi
+  if [ -n "$st" ]; then
+    jira_call transition "$t" "$st" >/dev/null || die "the evidence comment is on $t, but its status could not be set to '$st': run evidence-sync again (the comment is not repeated)"
+  fi
+  put --arg k "$key" --arg fp "$fp" --arg pr "$pr" --arg st "$st" --arg now "$(date -u +%FT%TZ)" '.synced = {key:$k,fingerprint:$fp,pr:$pr,status:$st,at:$now}' || die "could not record the sync"
+  echo "evidence-sync: $t has the evidence${pr:+ and the PR link}${st:+, status '$st'}"
+}
+
 cmd_status() {
   if [ ! -f "$STATE" ]; then echo "no active task"; return; fi
   printf 'task=%s risk=%s phase=%s' "$(get .task)" "$(get .risk)" "$(get .phase)"
   [ -n "$(get .profile)" ] && [ "$(get .profile)" != standard ] && printf ' profile=%s' "$(get .profile)"
   [ -n "$(get .verdict.result)" ] && printf ' verdict=%s' "$(get .verdict.result)"
   case "$(get .phase)" in verified|pr) cmd_check_fresh 2>/dev/null || printf ' evidence=stale' ;; esac
+  [ -n "$(get .ticket)" ] && printf ' ticket=%s spec=%s@%s' "$(get .ticket)" "$(get .specId)" "$(get .specSha | cut -c1-12)"   # managed tasks only
+  [ -n "$(get .blocked.kind)" ] && printf ' blocked=%s:%s' "$(get .blocked.kind)" "$(get .blocked.ref)"
   printf '\n'
 }
 
@@ -647,5 +879,12 @@ case "${1:-}" in
   _spawn) shift; cmd__spawn "$@" ;;
   _spawn-close) shift; cmd__spawn_close "$@" ;;
   evidence) shift; cmd_evidence "$@" ;;
+  # managed execution only (SDD_MANAGED=on); without it these are unknown commands, as before
+  block) managed || { sed -n '2,10p' "$0"; exit 2; }; shift; cmd_block "$@" ;;
+  revalidate) managed || { sed -n '2,10p' "$0"; exit 2; }; shift; cmd_revalidate "$@" ;;
+  evidence-sync) managed || { sed -n '2,10p' "$0"; exit 2; }; shift; cmd_evidence_sync "$@" ;;
+  done) managed || { sed -n '2,10p' "$0"; exit 2; }
+        [ "${2:-}" = --merged ] || die "usage: done --merged (the merge is checked, never declared: the PR head must be in the resolved base)"
+        cmd_advance done ;;
   *) sed -n '2,10p' "$0"; exit 2 ;;
 esac
