@@ -4,7 +4,7 @@
 #   review.sh plan <artifact> [--json]      print the resolved rubric: reviewers, standards (reviewer=standard), context files. Source: <project-dir>/review.d/<artifact>.env,
 #                                           else the kit's templates/review.d/<artifact>.env (shipped: prd, adr, feature-spec). Keys: REVIEWERS, STANDARDS, CONTEXT.
 #   review.sh hash <id> [--target P]        the contentHash of the document (sha256 over the sorted files: sha256 + relative path each). Excludes spec.meta.json and acceptances.jsonl
-#   review.sh begin <id> [--target P]       open a review round: remember the contentHash, count the round. Past SPEC_REVIEW_MAX_ROUNDS (default 2) it refuses (exit 3): no
+#   review.sh begin <id> [--target P]       open a review round: remember the contentHash, count the round. Past SPEC_REVIEW_MAX_ROUNDS (default 4) it refuses (exit 3): no
 #                                           unbounded retry, a person decides (raise the setting or change the document's approach).
 #   review.sh record <id> --verdict PASS|BLOCK|PARTIAL|NOT_RUN --isolation fresh|none [--findings FILE]
 #                                           store the round's evidence, bound to the contentHash seen at `begin`. One record per round. FILE is a JSON array
@@ -31,7 +31,7 @@ PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null |
 PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 . "$(dirname "${BASH_SOURCE[0]}")/env.sh" || { echo "review: env.sh is missing next to $(basename "$0"): run sdkit upgrade" >&2; exit 1; }
 sdkit_env_load "$PROJECT_DIR"
-MAX_ROUNDS="${SPEC_REVIEW_MAX_ROUNDS:-2}"; case "$MAX_ROUNDS" in ''|*[!0-9]*) MAX_ROUNDS=2 ;; esac
+MAX_ROUNDS="${SPEC_REVIEW_MAX_ROUNDS:-4}"; case "$MAX_ROUNDS" in ''|*[!0-9]*) MAX_ROUNDS=4 ;; esac
 SPEC_DIR="${SPECS_DIR:-specs}"
 WORK="$PROJECT_DIR/$KIT_DIR/work/review"
 command -v jq >/dev/null 2>&1 || { echo "review: jq is required" >&2; exit 2; }

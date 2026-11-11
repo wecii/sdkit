@@ -24,7 +24,7 @@ if [ -f "$env_file" ]; then
   if [ -z "$ignored" ]; then ok "$ENV_NAME parses"
   else bad "settings lines the kit ignores (shell code in a settings file is not run any more; see docs/upgrading.md, \"Settings files are parsed\"):"; printf '%s\n' "$ignored" | sed 's/^/          /'; fi
   SDKIT_ENV_QUIET=1 sdkit_env_load_file "$env_file"; SDKIT_ENV_QUIET=1 sdkit_env_load_file "$TARGET/$KIT_DIR/sdkit.local.env"
-  ENVP="$(sed -n 's/^SDKIT_ENV=//p' "$env_file" | tail -1 | tr -d "\"' ")"; ENVP="${ENVP:-standalone}"   # install persona: analyst skips the stack, verify and openspec checks
+  ENVP="$(sed -n 's/^SDKIT_ENV=//p' "$env_file" | tail -1 | tr -d "\"' ")"; ENVP="${ENVP:-standalone}"   # install persona: analyst skips the stack and verify checks
   case "$ENVP" in standalone|analyst|developer) [ "$ENVP" = standalone ] || ok "install env: $ENVP" ;; *) bad "SDKIT_ENV '$ENVP' is not standalone, analyst or developer"; ENVP=standalone ;; esac
   [ "$ENVP" = analyst ] || [ -n "${STACK:-}" ] || warn "STACK is not set in $ENV_NAME: the kit assumes '$SDKIT_DEFAULT_STACK'. Set STACK=<go|spring-boot|jvm|python|nextjs|react-native|generic>"
   git -C "$TARGET" rev-parse --verify -q "${BASE_BRANCH:-}" >/dev/null || git -C "$TARGET" rev-parse --verify -q "origin/${BASE_BRANCH:-}" >/dev/null \
@@ -255,9 +255,7 @@ if [ "$STACK" = react-native ]; then
   done
 fi
 # OpenSpec is a permanent part of the workflow: the CLI, the openspec/ directory and its skills for the repo's hosts
-if [ "${ENVP:-standalone}" = analyst ]; then
-  ok "analyst env: openspec, stack and verify checks skipped"
-elif command -v openspec >/dev/null 2>&1; then
+if command -v openspec >/dev/null 2>&1; then
   ok "openspec CLI installed ($(openspec --version 2>/dev/null | head -1); the kit was tested with 1.13.x)"
 else
   bad "openspec CLI missing: npm install -g @fission-ai/openspec (or: sdkit init --install-openspec)"

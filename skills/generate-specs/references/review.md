@@ -1,8 +1,13 @@
 # The internal review loop
 
+Two reviews, two review ids, so the draft's rounds do not use up the output's:
+- **Part 1, the draft** (SKILL step 4): review id `<id>-draft`, target `<project-dir>/work/spec-draft/<id>/` (`review.sh begin <id>-draft --target <path>`, `record <id>-draft ...`). Everything below applies to it.
+- **Part 2, the output** (SKILL step 7): review id `<id>`, target `specs/<id>/` (the OpenSpec change). This is the evidence `spec.sh publish` checks. Fresh reviewers get the reviewed draft and the change and answer one question set: is anything lost, invented, renumbered or contradicted (AC ids, decisions, non-goals), does `tasks.md` cover every AC, does `design.md` keep each decision's rationale, is the prose in `ANALYST_LANGUAGE`. Use the `feature-spec` rubric for `specs/**/spec.md`, `prd` for `proposal.md`, `adr` for `design.md` (`review.sh plan <artifact>`). A change here that is more than a typo goes back to the draft loop and the propose step is redone.
+
+
 1. `review.sh plan <artifact>` for `prd`, `adr`, `feature-spec`: reviewers, standards, context.
 2. Read and follow `egm-review-loop/SKILL.md` (EGM plugin `egm@egm`; for example `~/.claude/plugins/cache/egm/egm/<version>/skills/egm-review-loop/SKILL.md`) in this thread, once per artifact, with `TargetFile`, `SemanticTarget`, `Reviewers`, `Standards`, `GoldfishContext` taken from the plan. Its `disable-model-invocation` flag blocks a user-style invocation, not reading and following it; whether a host lets one skill do that is unverified. If it cannot be followed, use the `spec-reviewer` role via `run-role.sh` (fresh process); if neither is possible, record NOT_RUN.
 3. Before the first review of a document: `review.sh begin <id>`. After the reviewers answer, write their findings to a file as `- <id> | <BLOCKER|MAJOR|MINOR> | <where> | <text>` and run `review.sh record <id> --verdict PASS|BLOCK|PARTIAL|NOT_RUN --isolation fresh|none --findings <file>`.
 4. Reviewers and generator are different fresh subagents. If the host has no fresh-subagent facility: `record --verdict NOT_RUN --isolation none`, tell the user, stop. `isolation=none` can never be PASS.
-5. Each correction changes the content hash, which makes earlier evidence stale: run `begin` again, review only the changed artifacts, `record` again. Past the round cap `begin` exits 3: stop and give the human the open findings.
+5. Each correction changes the content hash, which makes earlier evidence stale: run `begin` again, review only the changed artifacts, `record` again. After each round follow `triage.md`: fixable findings are fixed, decisions are asked of the user in batches, then the next round opens. Past the round cap `begin` exits 3: only then give the human the open findings.
 6. `review.sh check <id>` is the only test of "reviewed". `spec.sh publish` runs it itself.

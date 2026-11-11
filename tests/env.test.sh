@@ -18,9 +18,10 @@ eq "unknown --env exits 2"                "$(rc "$SDKIT" init --env bogus "$D")"
 echo "analyst"
 A="$T/an"; mk "$A"; ( cd "$A" && "$SDKIT" init --host claude --env analyst . >/dev/null 2>&1 )
 eq "analyst persisted"                    "$(val "$A")" analyst
-check "analyst keys added"                bash -c "grep -q '^PRESPEC_DIR=prespec' '$A/.sdkit/sdkit.env' && grep -q '^SPEC_REVIEW_MAX_ROUNDS=2' '$A/.sdkit/sdkit.env'"
+check "analyst keys added"                bash -c "grep -q '^PRESPEC_DIR=prespec' '$A/.sdkit/sdkit.env' && grep -q '^SPEC_REVIEW_MAX_ROUNDS=4' '$A/.sdkit/sdkit.env'"
 check "prespec README placeholder"        test -f "$A/prespec/README.md"
-nocheck "no openspec/ in analyst"         test -e "$A/openspec"
+check "analyst gets openspec/ for the propose step" test -d "$A/openspec"
+check "analyst language defaults to tr"   grep -q '^ANALYST_LANGUAGE=tr' "$A/.sdkit/sdkit.env"
 ( cd "$A" && "$SDKIT" init --host claude --env analyst . >/dev/null 2>&1 )
 eq "re-init does not duplicate the ignore line" "$(grep -cx '/prespec/' "$A/.gitignore")" 1
 ( cd "$A" && git add -A && git commit -qm setup && echo '# idea' > prespec/feat.md )
@@ -42,6 +43,6 @@ V="$T/dev"; mk "$V"; ( cd "$V" && "$SDKIT" init --host claude --env developer . 
 eq "developer persisted"                  "$(val "$V")" developer
 check "developer keys added"              bash -c "grep -q '^SDD_MANAGED=on' '$V/.sdkit/sdkit.env' && grep -q '^SPECS_DIR=specs' '$V/.sdkit/sdkit.env'"
 check "developer doctor warns on missing specs/" bash -c "'$KIT/bin/doctor.sh' '$V' 2>&1 | grep -q 'warn  .*specs/'"
-nocheck "analyst doctor skips openspec"   bash -c "'$KIT/bin/doctor.sh' '$A' 2>&1 | grep -qiE 'openspec.*(missing|initialised)'"
+check "analyst doctor checks openspec"    bash -c "'$KIT/bin/doctor.sh' '$A' 2>&1 | grep -qiE 'openspec'"
 check "analyst doctor checks prespec ignored" bash -c "'$KIT/bin/doctor.sh' '$A' 2>&1 | grep -q 'prespec.*git-ignored'"
 finish env

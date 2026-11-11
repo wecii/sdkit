@@ -2,7 +2,7 @@
 # Install the kit's project side into a repo. Run once, by whoever sets a repo up; developers who clone it do nothing.
 # Usage: init.sh [--install-openspec] [--ci bitbucket|github|gitlab] [--host claude[,codex,opencode,cursor,gemini]] [--dir NAME] [--mode plugin|copy] [--stack go|spring-boot|jvm|python|nextjs|react-native|generic] [--no-memory] [--memory-vcs commit|ignore] [--env standalone|analyst|developer] [--force] [--marketplace-url URL] [target-dir]
 #   --env analyst|developer  the install persona, kept in sdkit.env as SDKIT_ENV (default standalone = today's behaviour; an existing value is kept).
-#                     analyst: a project-specs repo (no stack, no openspec, git-ignored pre-spec dir); developer: a source repo with specs/ as a submodule
+#                     analyst: a project-specs repo (no stack; openspec for the propose step; git-ignored pre-spec dir); developer: a source repo with specs/ as a submodule
 #   --host claude     (default) Claude Code
 #   The project-side directory (sdkit.env, project.md, rules, memory, scripts ...) is .sdkit/ for every host. It is committed except what
 #   is personal or generated (its .gitignore). A repo set up before 1.0 keeps its .claude/.codex/.agentkit with project.env until
@@ -192,7 +192,8 @@ case "$SDKIT_ENV" in
     env_key SPEC_REPO "" "Hint: git URL of the project-specs repo to add as the submodule: git submodule add <SPEC_REPO> specs" ;;
   analyst)
     env_key PRESPEC_DIR prespec "Git-ignored directory for pre-specs (raw input). Its content is never committed. Default: prespec"
-    env_key SPEC_REVIEW_MAX_ROUNDS 2 "Most review rounds per spec before a human decides. Default: 2" ;;
+    env_key SPEC_REVIEW_MAX_ROUNDS 4 "Most review rounds per spec before a human decides. Default: 4"
+    env_key ANALYST_LANGUAGE tr "Language of the analyst's prose and of the generated specs (ISO 639-1 code or a name, e.g. tr, en). Default: tr" ;;
 esac
 if [ "$SDKIT_ENV" != standalone ]; then
   # review rubrics per artifact (project-owned: edit freely; existing files are kept)
@@ -335,16 +336,13 @@ fi
 # OpenSpec is a permanent part of the workflow (explore, propose, sync, archive are its skills). The kit does not
 # vendor it: the CLI comes from npm, and `openspec init` writes its skills for the same hosts as ours.
 say "openspec (required by the workflow)"
-if [ "$SDKIT_ENV" = analyst ]; then
-  say "  skipped (analyst env: no openspec in a project-specs repo)"
-elif ! command -v openspec >/dev/null 2>&1 && [ "$INSTALL_OPENSPEC" = 1 ]; then
+if ! command -v openspec >/dev/null 2>&1 && [ "$INSTALL_OPENSPEC" = 1 ]; then
   if command -v npm >/dev/null 2>&1; then
     say "  installing @fission-ai/openspec (npm install -g)"; npm install -g @fission-ai/openspec >/dev/null 2>&1 || say "  FAIL   npm install -g @fission-ai/openspec did not succeed; install it yourself"
   else say "  FAIL   npm not found: install Node.js first (brew install node), then re-run with --install-openspec"; fi
 fi
 OPENSPEC_PENDING=0
-if [ "$SDKIT_ENV" = analyst ]; then :
-elif command -v openspec >/dev/null 2>&1; then
+if command -v openspec >/dev/null 2>&1; then
   if [ -d "$TARGET/openspec" ]; then
     say "  kept   openspec/ (exists; run 'openspec update' in the repo if its skills are missing for a host)"
   else

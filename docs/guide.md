@@ -266,7 +266,7 @@ close off writing files via `Bash`). Non-Claude tools and a direct `git push` ar
 | `incident-to-rule` | After a bug is fixed | Turns the incident into a lasting guard (below) |
 | `scaffold-init` | When setting up a new repo, **once** | Asks which hosts (Claude/Codex/OpenCode/Cursor/Gemini), runs `init.sh --host ...`, starts `openspec init`, helps fill in `project.md`, runs doctor at the end |
 | `scaffold-doctor` | After install, or if something seems not to work | Runs `doctor.sh` and says what to change where for every `FAIL` |
-| `generate-specs` | Analyst environment (`SDKIT_ENV=analyst`) | Turns pre-specs into a PRD, feature spec or ADR in the specs repo, reviewed by `spec-reviewer` until `SPEC_REVIEW_MAX_ROUNDS`, then a PR ([role-aware.md](role-aware.md)) |
+| `generate-specs` | Analyst environment (`SDKIT_ENV=analyst`) | Turns pre-specs into reviewed specs, output as an OpenSpec change (`proposal.md`, `design.md`, `tasks.md`, `specs/`) via `openspec-propose` in `specs/<id>/`, reviewed until `SPEC_REVIEW_MAX_ROUNDS`, then a PR; prose in `ANALYST_LANGUAGE` (default `tr`) ([role-aware.md](role-aware.md)) |
 | `update-specs` | Analyst environment | Changes an approved spec (including a spec-change request from a developer) and bumps its version |
 | `generate-tasks` | Analyst environment | Splits an approved spec into Jira subtasks that follow the task contract, or answers a change request |
 
@@ -626,10 +626,11 @@ Details, flows and limits: [role-aware.md](role-aware.md).
 | `RISK_FLOOR_GLOBS` | empty (off) | Optional risk floor: `seviye:glob,seviye:glob` (e.g. `high:services/payments/*,medium:migrations/*.sql`). The strictest match among the files the diff actually touches is the lower bound for the task's risk label; checked by `advance green`/`verified` and CI (`ci-check`, which also reads the base branch's `sdkit.env`). A malformed value does not stay off, it is rejected. Details: `upgrading.md` |
 | `CONTRACTS` | empty (off) | If `1`, the Claude Code hook (`check-contract`) checks handoffs that carry `CONTRACT:` and the `HANDOFF-RESULT` line in subagent answers ([design-contracts.md](design-contracts.md)). `run-role.sh` checks a handoff with a `CONTRACT:` line regardless of this setting. Team setting (`sdkit.env`) |
 | `STACK` | `go` (in one place: `scripts/env.sh`; `doctor` warns if empty) | Stack: `go`, `spring-boot`, `jvm`, `python`, `nextjs`, `react-native`, `generic` (one per repo) |
-| `SDKIT_ENV` | `standalone` | Install persona: `standalone` (the plain spec-driven workflow, unchanged), `analyst` (specs repo: write and review specs, no stack, no OpenSpec) or `developer` (source repo: approved specs from a read-only submodule, tasks from Jira). Set by `sdkit init --env`; upgrade keeps it |
+| `SDKIT_ENV` | `standalone` | Install persona: `standalone` (the plain spec-driven workflow, unchanged), `analyst` (specs repo: write and review specs; no stack; OpenSpec for the propose step) or `developer` (source repo: approved specs from a read-only submodule, tasks from Jira). Set by `sdkit init --env`; upgrade keeps it |
 | `PRESPEC_DIR` | `prespec` | Git-ignored directory with raw pre-specs (analyst). Never committed |
 | `SPECS_DIR` | `specs` | Specs directory: the specs repo's spec folder (analyst) or the read-only approved-specs submodule (developer) |
-| `SPEC_REVIEW_MAX_ROUNDS` | `2` | Most `spec-reviewer` rounds per spec before a human decides. `AGENT_SPEC_REVIEWER_TIER` sets its tier (`standard`) |
+| `SPEC_REVIEW_MAX_ROUNDS` | `4` | Most `spec-reviewer` rounds per spec before a human decides. `AGENT_SPEC_REVIEWER_TIER` sets its tier (`standard`) |
+| `ANALYST_LANGUAGE` | `tr` | Language of the `analyst` role's prose and of the specs `generate-specs` writes (ISO 639-1 code or name). Markers, AC ids, verdicts and file names stay English |
 | `SDD_MANAGED` | `on` in the developer env, else empty | Managed execution: `sdd.sh start --ticket KEY` takes the task from Jira and pins the approved spec revision |
 | `TRACKER` | empty | `jira` enables the keys below (read only then) |
 | `JIRA_BASE_URL`, `JIRA_USER`, `JIRA_PROJECT`, `JIRA_SUBTASK_TYPE`, `JIRA_CHANGE_TYPE`, `JIRA_LINK_TYPE`, `JIRA_API_VERSION`, `JIRA_SEARCH_PATH` | empty / `Sub-task` / `3` | Jira connection and issue types; commented out in `sdkit.env` until set |

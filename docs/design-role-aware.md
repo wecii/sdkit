@@ -6,7 +6,7 @@ Status: design contract for the work packages F01-F14. Agents implement against 
 
 `SDKIT_ENV=standalone|analyst|developer` in `<project-dir>/sdkit.env` (shared, persisted so `upgrade.sh` keeps it). Default and absent value: `standalone` = today's behaviour, unchanged. `init.sh --env <v>` sets it. "role" always means a subagent role; the install persona is called env.
 
-- analyst: a `project-specs` repo. No stack, no openspec. Skills: generate-specs, update-specs, generate-tasks. Gitignored pre-spec dir `prespec/` (`PRESPEC_DIR`, default `prespec`).
+- analyst: a `project-specs` repo. No stack; openspec is installed because generate-specs outputs an OpenSpec change into `specs/<id>/`. Skills: generate-specs, update-specs, generate-tasks. Gitignored pre-spec dir `prespec/` (`PRESPEC_DIR`, default `prespec`).
 - developer: a source repo. Approved specs are a git submodule at `specs/` (read-only for the developer). Skill: spec-driven-dev in managed mode.
 
 ## Spec metadata (F06)
@@ -24,7 +24,7 @@ Status: design contract for the work packages F01-F14. Agents implement against 
 
 EGM is a skill plugin (`egm@egm`), not a CLI. The skills (generate-specs/update-specs) call EGM `egm-review-loop` with `TargetFile, SemanticTarget, Reviewers, Standards, GoldfishContext` taken from `<project-dir>/review.d/<artifact>.env` (rubric per artifact: REVIEWERS, STANDARDS, CONTEXT). `review.sh` does only the deterministic parts:
 - `review.sh plan <artifact>`: print the resolved reviewers/standards/rubric.
-- `review.sh begin <id>`: record contentHash, round counter; refuse past `SPEC_REVIEW_MAX_ROUNDS` (default 2).
+- `review.sh begin <id>`: record contentHash, round counter; refuse past `SPEC_REVIEW_MAX_ROUNDS` (default 4).
 - `review.sh record <id> --verdict PASS|BLOCK|PARTIAL|NOT_RUN --isolation fresh|none --findings <file>`: store evidence bound to the current contentHash. `isolation=none` can never yield PASS.
 - `review.sh check <id>`: exit 0 only if the latest evidence is PASS, isolation=fresh and its hash equals the current contentHash (stale evidence rejected).
 - `review.sh accept <id> <finding-id> --who --why`: human exception, keyed on finding id + text hash (editing the finding voids it), append-only `acceptances.jsonl`.
