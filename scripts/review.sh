@@ -4,8 +4,11 @@
 #   review.sh plan <artifact> [--json]      print the resolved rubric: reviewers, standards (reviewer=standard), context files. Source: <project-dir>/review.d/<artifact>.env,
 #                                           else the kit's templates/review.d/<artifact>.env (shipped: prd, adr, feature-spec). Keys: REVIEWERS, STANDARDS, CONTEXT.
 #   review.sh hash <id> [--target P]        the contentHash of the document (sha256 over the sorted files: sha256 + relative path each). Excludes spec.meta.json and acceptances.jsonl
-#   review.sh begin <id> [--target P]       open a review round: remember the contentHash, count the round. Past SPEC_REVIEW_MAX_ROUNDS (default 4) it refuses (exit 3): no
-#                                           unbounded retry, a person decides (raise the setting or change the document's approach).
+#   review.sh begin <id> [--target P] [--final]
+#                                           open a review round: remember the contentHash, count the round. Past SPEC_REVIEW_MAX_ROUNDS (default 4) it refuses (exit 3): no
+#                                           unbounded retry, a person decides (raise the setting or change the document's approach). `--final` opens ONE verification
+#                                           round after the cap, outside the count: only when the cap is reached, once per review id (a second one exits 3). It is for
+#                                           checking what the person fixed or accepted after the cap; it does not raise `round`.
 #   review.sh record <id> --verdict PASS|BLOCK|PARTIAL|NOT_RUN --isolation fresh|none [--findings FILE]
 #                                           store the round's evidence, bound to the contentHash seen at `begin`. One record per round. FILE is a JSON array
 #                                           [{id, severity: BLOCKER|MAJOR|MINOR, evidence, disposition: open|fixed|accepted}] or the spec-reviewer lines
@@ -14,9 +17,9 @@
 #                                           needs a valid acceptance. A host with no fresh-subagent facility records NOT_RUN.
 #   review.sh check <id>                    exit 0 only when the latest evidence is PASS, isolation=fresh, its hash equals the document's CURRENT hash (an edit makes
 #                                           it stale) and no BLOCKER/MAJOR is open. Otherwise exit 1 and the reason on stdout.
-#   review.sh accept <id> <finding-id> --who W --why Y
+#   review.sh accept <id> <finding-id> [--who W] --why Y
 #                                           a person accepts one finding of the latest evidence. Keyed on finding id + a hash of its text: a changed finding is not
-#                                           accepted any more. Append-only <target>/acceptances.jsonl (committed with the document). Nothing is accepted by default.
+#                                           accepted any more. --who defaults to JIRA_USER (the person's Jira account); with neither it refuses. Append-only <target>/acceptances.jsonl (committed with the document). Nothing is accepted by default.
 # Where things live: the document is specs/<id>/ (SPECS_DIR, default `specs`; or --target, remembered from `begin`). Evidence and the round counter are local state in
 # <project-dir>/work/review/<id>/state.json (the project dir comes from scripts/env.sh); the acceptances are NOT local: <target>/acceptances.jsonl, or
 # <file>.acceptances.jsonl beside a single-file target. Both are outside the hash.
@@ -37,7 +40,7 @@ WORK="$PROJECT_DIR/$KIT_DIR/work/review"
 command -v jq >/dev/null 2>&1 || { echo "review: jq is required" >&2; exit 2; }
 
 die()   { echo "review: $*" >&2; exit "${RC:-2}"; }
-usage() { echo "usage: review.sh plan <artifact> [--json] | hash <id> | begin <id> | record <id> --verdict V --isolation I [--findings F] | check <id> | accept <id> <finding-id> --who W --why Y" >&2; exit 2; }
+usage() { echo "usage: review.sh plan <artifact> [--json] | hash <id> | begin <id> [--final] | record <id> --verdict V --isolation I [--findings F] | check <id> | accept <id> <finding-id> [--who W] --why Y" >&2; exit 2; }
 now()   { date -u +%Y-%m-%dT%H:%M:%SZ; }
 okname() { case "$1" in ''|.*|*[!A-Za-z0-9._-]*) return 1 ;; esac; return 0; }
 
@@ -130,23 +133,30 @@ plan)
     echo "artifact:  $art"; echo "source:    $rf"; echo "reviewers: $REVIEWERS"; echo "standards: ${STANDARDS:-none}"; echo "context:   ${CONTEXT:-none}"
   fi ;;
 hash|begin)
-  id="${1:-}"; shift; okname "$id" || usage; tgt=""
-  while [ $# -gt 0 ]; do case "$1" in --target) tgt="${2:-}"; shift ;; *) usage ;; esac; shift; done
+  id="${1:-}"; shift; okname "$id" || usage; tgt=""; final=0
+  while [ $# -gt 0 ]; do case "$1" in --target) tgt="${2:-}"; shift ;; --final) final=1 ;; *) usage ;; esac; shift; done
+  [ "$final" = 0 ] || [ "$cmd" = begin ] || usage
   t="$(target_path "$id" "$tgt")" || exit 2
   h="$(content_hash "$t")" || exit 2
   if [ "$cmd" = hash ]; then echo "$h"; exit 0; fi
   mkdir -p "$WORK/$id" || die "cannot create $WORK/$id"; sdkit_lock "$WORK/$id/state.json"
   prev=0; [ -f "$WORK/$id/state.json" ] && prev="$(jq -r '.round // 0' "$WORK/$id/state.json" 2>/dev/null || echo 0)"
-  if [ "$prev" -ge "$MAX_ROUNDS" ]; then
+  if [ "$final" = 1 ]; then
+    fin="$(jq -r '.finalUsed // false' "$WORK/$id/state.json" 2>/dev/null || echo false)"
+    if [ "$prev" -lt "$MAX_ROUNDS" ]; then sdkit_unlock "$WORK/$id/state.json"; echo "review: --final is only for after the round cap ($prev of $MAX_ROUNDS used); open a normal round" >&2; exit 1; fi
+    if [ "$fin" = true ]; then sdkit_unlock "$WORK/$id/state.json"; echo "review: the final verification round of '$id' is already used. A person decides (rework by hand or raise SPEC_REVIEW_MAX_ROUNDS)." >&2; exit 3; fi
+  elif [ "$prev" -ge "$MAX_ROUNDS" ]; then
     sdkit_unlock "$WORK/$id/state.json"
     echo "review: round cap reached for '$id' ($prev of SPEC_REVIEW_MAX_ROUNDS=$MAX_ROUNDS used). No further automatic round: a person decides (rework the document by hand or raise SPEC_REVIEW_MAX_ROUNDS)." >&2; exit 3
   fi
   rel="$t"; case "$t" in "$PROJECT_DIR"/*) rel="${t#"$PROJECT_DIR"/}" ;; esac
   st="$( { [ -f "$WORK/$id/state.json" ] && cat "$WORK/$id/state.json"; } || echo '{}')"
-  save_state "$id" "$(printf '%s' "$st" | jq -c --arg id "$id" --arg t "$rel" --arg h "$h" --arg at "$(now)" --argjson r "$((prev + 1))" \
-    '. + {id:$id, target:$t, contentHash:$h, round:$r, pending:true, begunAt:$at}')"
+  if [ "$final" = 1 ]; then nr="$prev"; else nr="$((prev + 1))"; fi
+  save_state "$id" "$(printf '%s' "$st" | jq -c --arg id "$id" --arg t "$rel" --arg h "$h" --arg at "$(now)" --argjson r "$nr" --argjson fin "$final" \
+    '. + {id:$id, target:$t, contentHash:$h, round:$r, pending:true, begunAt:$at} | if $fin == 1 then .finalUsed = true else . end')"
   sdkit_unlock "$WORK/$id/state.json"
-  echo "review: round $((prev + 1)) of $MAX_ROUNDS opened for '$id' at $h" ;;
+  if [ "$final" = 1 ]; then echo "review: final verification round opened for '$id' at $h (outside the cap of $MAX_ROUNDS; the only one)"
+  else echo "review: round $nr of $MAX_ROUNDS opened for '$id' at $h"; fi ;;
 record)
   id="${1:-}"; shift; okname "$id" || usage; verdict=""; iso=""; ff=""
   while [ $# -gt 0 ]; do case "$1" in --verdict) verdict="${2:-}"; shift ;; --isolation) iso="${2:-}"; shift ;; --findings) ff="${2:-}"; shift ;; *) usage ;; esac; shift; done
@@ -182,7 +192,8 @@ check)
 accept)
   id="${1:-}"; fid="${2:-}"; shift 2 2>/dev/null || usage; okname "$id" || usage; [ -n "$fid" ] || usage; who=""; why=""
   while [ $# -gt 0 ]; do case "$1" in --who) who="${2:-}"; shift ;; --why) why="${2:-}"; shift ;; *) usage ;; esac; shift; done
-  [ -n "${who//[[:space:]]/}" ] && [ -n "${why//[[:space:]]/}" ] || die "accept needs --who \"<who accepts>\" and --why \"<reason>\" (nothing is accepted by default)"
+  [ -n "${who//[[:space:]]/}" ] || who="${JIRA_USER:-}"
+  [ -n "${who//[[:space:]]/}" ] && [ -n "${why//[[:space:]]/}" ] || die "accept needs --why \"<reason>\" and a person: --who or JIRA_USER in sdkit.local.env (nothing is accepted by default)"
   sf="$WORK/$id/state.json"; [ -f "$sf" ] || die "no review evidence for '$id'"
   f="$(jq -c --arg i "$fid" '(.evidence.findings // [])[] | select(.id == $i)' "$sf")"
   [ -n "$f" ] || { echo "review: finding '$fid' is not in the latest evidence of '$id'" >&2; exit 1; }

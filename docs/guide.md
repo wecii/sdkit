@@ -607,7 +607,7 @@ Generates `agents/*.md` (Claude) and `adapters/{codex,opencode,cursor,gemini}/` 
 ### Role-aware scripts (`SDKIT_ENV=analyst|developer`)
 Details, flows and limits: [role-aware.md](role-aware.md).
 - `scripts/spec.sh`: spec lifecycle in the specs repo (`init-meta`, `status`, `branch`, `publish`, `promote`, `approved-sha`; versions 0.1, 0.N, 1.0). Pre-spec content (`PRESPEC_DIR`) is never committed. `open-pr.sh` also serves it.
-- `scripts/review.sh`: evidence for the spec review (`plan`, `begin`, `record`, `check`, `accept`) with the `spec-reviewer` role and `review.d/*.env` checklists; stops after `SPEC_REVIEW_MAX_ROUNDS` rounds for a human decision.
+- `scripts/review.sh`: evidence for the spec review (`plan`, `begin`, `record`, `check`, `accept`) with the `spec-reviewer` role and `review.d/*.env` checklists; stops after `SPEC_REVIEW_MAX_ROUNDS` rounds; the open findings are then walked one by one with the user, and `begin --final` opens one verification round outside the cap. `accept` records `JIRA_USER`.
 - `scripts/tasks.sh`: deterministic core of `generate-tasks`: AC-to-task trace, dependency cycles, stable ids, Jira description render, report (`templates/change-request.md` for change requests).
 - `scripts/jira.sh` + `adapters.d/jira.sh`: the Jira task contract (`validate-task`, `fetch`, `deps-ready`, `upsert`, `comment`, `transition`, `change-request`). Network only with `JIRA_EGRESS=allow` (personal) and a token read from the variable named in `JIRA_TOKEN_ENV`.
 - `scripts/sdd.sh start --ticket KEY` (with `SDD_MANAGED=on`): managed execution, see [role-aware.md](role-aware.md).
@@ -633,7 +633,7 @@ Details, flows and limits: [role-aware.md](role-aware.md).
 | `ANALYST_LANGUAGE` | `tr` | Language of the `analyst` role's prose and of the specs `generate-specs` writes (ISO 639-1 code or name). Markers, AC ids, verdicts and file names stay English |
 | `SDD_MANAGED` | `on` in the developer env, else empty | Managed execution: `sdd.sh start --ticket KEY` takes the task from Jira and pins the approved spec revision |
 | `TRACKER` | empty | `jira` enables the keys below (read only then) |
-| `JIRA_BASE_URL`, `JIRA_USER`, `JIRA_PROJECT`, `JIRA_SUBTASK_TYPE`, `JIRA_CHANGE_TYPE`, `JIRA_LINK_TYPE`, `JIRA_API_VERSION`, `JIRA_SEARCH_PATH` | empty / `Sub-task` / `3` | Jira connection and issue types; commented out in `sdkit.env` until set |
+| `JIRA_BASE_URL`, `JIRA_PROJECT`, `JIRA_SUBTASK_TYPE`, `JIRA_CHANGE_TYPE`, `JIRA_LINK_TYPE`, `JIRA_API_VERSION`, `JIRA_SEARCH_PATH` | empty / `Sub-task` / `3` | Jira connection and issue types; commented out in `sdkit.env` until set. `JIRA_USER` (your account), `JIRA_EGRESS` and `JIRA_TOKEN_ENV` are personal: `sdkit.local.env` |
 | `JIRA_BLOCKED_STATUS`, `JIRA_REVIEW_STATUS` | `Blocked`, `In Review` | Status names the ticket moves to when a change request blocks the task, and when evidence is synced |
 | `SDD_JIRA_CMD` | empty (`scripts/jira.sh`) | Replaces the Jira command (tests, or a bridge with the same verbs and exit codes) |
 | `JIRA_EGRESS`, `JIRA_TOKEN_ENV` **(personal)** | empty | `allow` lets `jira.sh` call the API from this machine; the name of the variable that holds the token (the token never goes in a settings file) |

@@ -27,7 +27,7 @@ EGM is a skill plugin (`egm@egm`), not a CLI. The skills (generate-specs/update-
 - `review.sh begin <id>`: record contentHash, round counter; refuse past `SPEC_REVIEW_MAX_ROUNDS` (default 4).
 - `review.sh record <id> --verdict PASS|BLOCK|PARTIAL|NOT_RUN --isolation fresh|none --findings <file>`: store evidence bound to the current contentHash. `isolation=none` can never yield PASS.
 - `review.sh check <id>`: exit 0 only if the latest evidence is PASS, isolation=fresh and its hash equals the current contentHash (stale evidence rejected).
-- `review.sh accept <id> <finding-id> --who --why`: human exception, keyed on finding id + text hash (editing the finding voids it), append-only `acceptances.jsonl`.
+- `review.sh accept <id> <finding-id> [--who] --why` (`--who` defaults to `JIRA_USER`; `begin <id> --final` opens one verification round outside the cap, once per id): human exception, keyed on finding id + text hash (editing the finding voids it), append-only `acceptances.jsonl`.
 Findings: `{id, severity: BLOCKER|MAJOR|MINOR, evidence, disposition: open|fixed|accepted}`. BLOCK if any open BLOCKER/MAJOR. Reviewers never approve what they generated: generation and review are separate subagents.
 If the host has no fresh-subagent facility the verdict is NOT_RUN, never PASS. Open risk: EGM `egm-review-loop` has `disable-model-invocation: true`; whether another skill may invoke it is unverified.
 

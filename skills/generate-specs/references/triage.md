@@ -11,4 +11,12 @@ Goal: the human answers questions, not finding lists. After each review round, b
 4. Apply. Each answer becomes content, not a note: a requirement or `AC-` criterion, a decision with the rejected alternatives, or, only if the user chose "unknown", an open question carrying an owner. Mark ACs that depend on an unresolved decision as blocked, naming the decision. Do not leave a closed question in the open-questions list.
 5. Re-run the review on the changed artifacts (`review.sh begin`, fresh reviewers, `record`). If the new findings are `ASK` again, repeat from step 1.
 
-Stop and escalate only when the round cap is reached or the user says to proceed with an item unresolved. Then show the remaining findings with the options (fix by hand and raise `SPEC_REVIEW_MAX_ROUNDS`, or accept as a visible exception with `review.sh accept`, which only the user runs).
+## At the round cap: walk the open findings one by one
+
+Stop here only when the round cap is reached (`begin` exits 3) or the user says to proceed with an item unresolved. Never hand over a bare list of ids and files. Go through the open BLOCKER/MAJOR findings (BLOCKER first) yourself, one question at a time:
+
+1. Show the finding: id, severity, where (file and line), the problem in one sentence, your class (`FIX` / `ASK` / `REJECT`) with the reason, and the exact edit you propose as a diff.
+2. Ask one question with these options, the proposed edit first: **apply it**; **answer differently** (the user gives the text); **accept the risk** (visible exception, `--why` is the user's reason); **reject the finding** (one line why).
+3. Group findings that one decision closes into a single question (as above); do not ask again for a finding the answer already closed.
+4. Apply the answers as content. Accept runs `review.sh accept <review-id> <finding-id> --why "<reason>"` only after the user's explicit yes for that finding; `--who` is left out, so it records `JIRA_USER`. If `JIRA_USER` is empty, tell the user to set it in `sdkit.local.env` and stop; never invent a name.
+5. Verify, do not trust: open the single final round `review.sh begin <review-id> --final` (outside the cap, once per review id), run fresh reviewers on the changed artifacts only, `record`. Text the person wrote or edited is not PASS until this round says so. If the final round still has open BLOCKER/MAJOR findings, a second `--final` is refused (exit 3): show them and let the user decide (rework by hand or raise `SPEC_REVIEW_MAX_ROUNDS`).

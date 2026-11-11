@@ -32,10 +32,21 @@ echo "round cap, NOT_RUN, accept"
 check "NOT_RUN with isolation none is recorded" "$RV" record s1 --verdict NOT_RUN --isolation none
 nocheck "NOT_RUN is never approved" "$RV" check s1
 eq "third round refused (rc 3)" "$(rc "$RV" begin s1)" 3
+echo "final verification round (outside the cap)"
+check "--final opens one verification round after the cap" "$RV" begin s1 --final
+eq "--final does not raise the round count" "$(jq -r .round .sdkit/work/review/s1/state.json)" 2
+check "the final round records evidence" "$RV" record s1 --verdict PASS --isolation fresh --findings "$T/none.json"
+check "the final round can approve" "$RV" check s1
+eq "a second --final is refused (rc 3)" "$(rc "$RV" begin s1 --final)" 3
+mkdir -p specs/s3; echo a > specs/s3/spec.md; "$RV" begin s3 >/dev/null
+eq "--final before the cap is refused (rc 1)" "$(rc "$RV" begin s3 --final)" 1
 mkdir -p specs/s2; echo a > specs/s2/spec.md
 "$RV" begin s2 >/dev/null; "$RV" record s2 --verdict BLOCK --isolation fresh --findings "$T/blk.json" >/dev/null
 nocheck "accept needs who and why" "$RV" accept s2 F1
+nocheck "accept without who and without JIRA_USER is refused" env JIRA_USER= "$RV" accept s2 F1 --why "x"
 check "accept by a person" "$RV" accept s2 F1 --who ana --why "known gap, tracked in T-9"
+check "accept defaults who to JIRA_USER" env JIRA_USER=ana@corp.com "$RV" accept s2 F1 --why "known gap"
+eq "the Jira user is recorded as who" "$(tail -1 specs/s2/acceptances.jsonl | jq -r .who)" ana@corp.com
 "$RV" begin s2 >/dev/null
 eq "an edited finding is not covered by the acceptance (rc 2)" "$(rc "$RV" record s2 --verdict PASS --isolation fresh --findings "$T/acc2.json")" 2
 check "the unedited finding is accepted" "$RV" record s2 --verdict PASS --isolation fresh --findings "$T/acc.json"
