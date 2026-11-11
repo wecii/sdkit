@@ -228,3 +228,7 @@ For people working on the kit: the whole suite takes about 15 s. `tests/slow/` i
 ## 1.4.1: who logs a step, and its token usage
 
 No manual step. With `USAGE_LINE=1` (personal setting) the step lines name the orchestrator and carry its and the task's running token usage (in, cache read, cache write, out, hit ratio); `USAGE_LINE=1` now also switches the usage ledger on, so `USAGE_LOG` is not needed for it. Subagent lines show cache read and write too. On Codex the orchestrator's share is read from its rollout file; hosts that give no token data show `not measured`.
+
+## 1.5.0: analyst and developer environments
+
+No manual step; nothing changes until you opt in. `SDKIT_ENV` defaults to `standalone` (the existing OpenSpec workflow, unchanged). `bin/init.sh --env analyst` prepares a `project-specs` repo (git-ignored `prespec/`, skills `generate-specs`, `update-specs`, `generate-tasks`); `--env developer` prepares a source repo for Jira subtask execution (`SDD_MANAGED=on`, approved specs as the `specs/` submodule, `sdd.sh start --ticket KEY`). New settings are appended to `sdkit.env` and are empty or off by default; the Jira keys and `JIRA_EGRESS` (personal) are commented out. Spec review uses the EGM plugin (`egm@egm`); live EGM, Jira and GitHub flows are not yet verified. See `docs/role-aware.md`. `bin/init.sh|doctor.sh|upgrade.sh` and `bin/sdkit` changes now select focused tests instead of the whole suite.
