@@ -688,7 +688,7 @@ Details, flows and limits: [role-aware.md](role-aware.md).
 | `MEMORY_PROMOTE` **(personal)** | `ask` | At closeout, ask the user about the `MEMORY:` candidates (`ask`), take all of them (`auto`) or none (`off`) |
 
 Environment-only variables: `VERIFY_BASE` (override the diff base), `VERIFY_POLICY_DIR` (default `<project-dir>/verify.d`),
-`BITBUCKET_EMAIL`, `BITBUCKET_TOKEN`, `PR_TOKEN_REPO`. An environment variable overrides the default in `sdkit.env` (for `PR_HOST` the `: "${PR_HOST:=auto}"` form makes this work).
+`BITBUCKET_EMAIL`, `BITBUCKET_TOKEN`, `PR_TOKEN_REPO` (also settable in the personal `sdkit.local.env`, where the template ships them empty; the token never goes in the shared `sdkit.env`). An environment variable overrides the default in `sdkit.env` (for `PR_HOST` the `: "${PR_HOST:=auto}"` form makes this work).
 
 ### `<project-dir>/project.md` sections
 Tracker · Branches and PRs (including commit scopes) · Release flow (optional) · Verification · Test layout · Protected code · **Risk rubric** · Known pitfalls.
