@@ -83,6 +83,7 @@ publish)
   while [ $# -gt 0 ]; do case "$1" in --title) title="${2:-}"; shift ;; --body-file) bf="${2:-}"; shift ;; --breaking) brk=1 ;; *) usage ;; esac; shift; done
   [ -n "$title" ] && [ -r "$bf" ] || usage
   need_dir "$id"; d="$(dir_of "$id")"
+  "$HERE/open-pr.sh" --repo-dir "$REPO" --check || die "the PR host is not ready (list above): fill it in and run publish again; nothing was committed or pushed"
   "$HERE/review.sh" check "$id" || die "publish needs a fresh PASS review of the current content (review.sh check $id)"
   bad="$(prespec_staged)"; [ -z "$bad" ] || die "refusing: staged paths inside the pre-spec directory '$PRESPEC' (never committed):
 $bad"

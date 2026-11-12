@@ -139,6 +139,11 @@ git -C "$pr" remote set-url origin git@gitlab.example.com:g/r.git
 rm -f "$T/calls"; expect "open-pr gitlab calls glab mr create" 0 env PR_HOST=auto bash -c "$(declare -f opr); pr='$pr' prbin='$prbin' KIT='$KIT' T='$T'; opr && grep -q '^glab mr create --source-branch feat --target-branch main' '$T/calls'"
 git -C "$pr" remote set-url origin https://git.example.org/g/r.git
 expect "open-pr auto fails on an unknown origin" 2 env PR_HOST=auto bash -c "$(declare -f opr); pr='$pr' prbin='$prbin' KIT='$KIT' T='$T'; opr"
+oprc() { (cd "$pr" && PATH="$prbin:$PATH" "$KIT/scripts/open-pr.sh" --check); }
+git -C "$pr" remote set-url origin https://bitbucket.org/o/r.git
+expect "open-pr --check lists a missing Bitbucket token and opens nothing" 2 env -u BITBUCKET_TOKEN PR_HOST=bitbucket BITBUCKET_EMAIL=a@b.c bash -c "$(declare -f oprc); pr='$pr' prbin='$prbin' KIT='$KIT'; out=\$(oprc 2>&1); rc=\$?; case \"\$out\" in *BITBUCKET_TOKEN*) exit \$rc ;; *) exit 9 ;; esac"
+git -C "$pr" remote set-url origin https://github.com/o/r.git
+expect "open-pr --check passes for github with an authenticated gh" 0 env PR_HOST=github bash -c "$(declare -f oprc); pr='$pr' prbin='$prbin' KIT='$KIT'; oprc"
 
 # --- Homebrew formula, publishability scan, sdkit entry point ---
 gf="$T/gf"; mkdir -p "$gf/packaging/homebrew" "$gf/.claude-plugin"; cp "$KIT/packaging/homebrew/gen-formula.sh" "$gf/packaging/homebrew/"; echo '{"version":"9.9.9"}' > "$gf/.claude-plugin/plugin.json"

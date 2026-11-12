@@ -8,14 +8,17 @@
 #   PR_HOST=auto       picks one of the above from the origin URL (github.com, gitlab.*, bitbucket.org; GH_HOST / GITLAB_HOST for
 #                      self-hosted instances).
 #   --repo-dir D       (first, optional) operate on the repo D instead of the current directory.
+#   --check            (optional) preflight only: verify the host CLI/credentials are usable, list what is missing and how to set it, open nothing.
+#                      Exit 0 ready, 2 something to fill in (printed as a checklist). spec.sh publish runs it before any commit or push.
 #   --reuse            (optional) if an open PR/MR already exists for the source branch, print its URL and exit 0 instead of creating a second one.
 # Details: the kit's docs/hosts.md.
 set -eu
-REPO_DIR=""; REUSE=0
+REPO_DIR=""; REUSE=0; CHECK=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --repo-dir) REPO_DIR="${2:?--repo-dir needs a directory}"; shift 2 ;;
     --reuse) REUSE=1; shift ;;
+    --check) CHECK=1; shift ;;
     *) break ;;
   esac
 done
@@ -38,6 +41,40 @@ case "$PR_HOST" in
   bitbucket|github|gitlab) ;;
   *) echo "PR_HOST=$PR_HOST is not supported (bitbucket, github, gitlab, auto). Open the PR by hand." >&2; exit 2 ;;
 esac
+# Preflight: say everything that is missing at once, with the exact fix, before anything is committed or pushed.
+if [ "$CHECK" = 1 ]; then
+  missing=0; need() { echo "  - $1" >&2; missing=1; }
+  echo "PR host: $PR_HOST" >&2
+  case "$PR_HOST" in
+    github) command -v gh >/dev/null || need "install the gh CLI (https://cli.github.com)"
+            command -v gh >/dev/null && { gh auth status >/dev/null 2>&1 || need "run: gh auth login   (or export GH_TOKEN=...)"; } ;;
+    gitlab) command -v glab >/dev/null || need "install the glab CLI (https://gitlab.com/gitlab-org/cli)"
+            command -v glab >/dev/null && { glab auth status >/dev/null 2>&1 || need "run: glab auth login   (or export GITLAB_TOKEN=...)"; } ;;
+    bitbucket)
+      command -v python3 >/dev/null || need "install python3 (open-pr.sh uses it for the Bitbucket API)"
+      c_email="${BITBUCKET_EMAIL:-$(git config user.email || true)}"
+      [ -n "$c_email" ] || need "set the Bitbucket account email: export BITBUCKET_EMAIL=you@company.com  (or git config user.email)"
+      c_url="$(git -C "${PR_TOKEN_REPO:-$ROOT}" remote get-url origin 2>/dev/null || true)"
+      c_token="${BITBUCKET_TOKEN:-}"
+      if [ -z "$c_token" ]; then
+        re='^https://[^@/]+:[^@/]+@bitbucket\.org/'; [[ "$c_url" =~ $re ]] && c_token="from origin URL"
+      fi
+      [ -n "$c_token" ] || need "set a Bitbucket API token (repo + pull request write): export BITBUCKET_TOKEN=...   (create it in Bitbucket > Personal settings > API tokens)"
+      if [ -n "$c_token" ] && [ -n "$c_email" ] && command -v curl >/dev/null 2>&1; then
+        t="${BITBUCKET_TOKEN:-${c_url#https://*:}}"; t="${t%%@*}"
+        code="$(curl -s -o /dev/null -m 10 -w '%{http_code}' -u "$c_email:$t" https://api.bitbucket.org/2.0/user 2>/dev/null || echo 000)"
+        case "$code" in
+          200) ;;
+          401|403) need "Bitbucket rejected the credentials (HTTP $code): check BITBUCKET_EMAIL is the account email and the token is valid" ;;
+          000) echo "  (warning: could not reach api.bitbucket.org, credentials not verified)" >&2 ;;
+          *) echo "  (warning: Bitbucket answered HTTP $code on the credential check)" >&2 ;;
+        esac
+      fi ;;
+  esac
+  if [ "$missing" = 1 ]; then echo "Fill in the items above, then run the same command again. Nothing was committed or pushed." >&2; exit 2; fi
+  echo "PR host ready." >&2; exit 0
+fi
+
 TITLE="${1:?title}"; DESCRIPTION_FILE="${2:?description file}"; DEST="${3:-${BASE_BRANCH:-develop}}"
 [ -r "$DESCRIPTION_FILE" ] || { echo "description file not readable: $DESCRIPTION_FILE" >&2; exit 2; }
 SOURCE="$(git rev-parse --abbrev-ref HEAD)"
