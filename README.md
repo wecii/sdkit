@@ -6,7 +6,7 @@
 
 **Make your coding agent follow a real engineering process, enforced by scripts instead of left to its good intentions.**
 
-![Version 1.7.3](https://img.shields.io/badge/version-1.7.3-blue)
+![Version 1.7.4](https://img.shields.io/badge/version-1.7.4-blue)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue)
 ![Claude Code](https://img.shields.io/badge/Claude%20Code-supported-informational)
 ![Codex](https://img.shields.io/badge/Codex-supported-informational)
