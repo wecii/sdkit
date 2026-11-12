@@ -195,6 +195,20 @@ case "$SDKIT_ENV" in
     env_key SPEC_REVIEW_MAX_ROUNDS 4 "Most review rounds per spec before a human decides. Default: 4"
     env_key ANALYST_LANGUAGE tr "Language of the analyst's prose and of the generated specs (ISO 639-1 code or a name, e.g. tr, en). Default: tr" ;;
 esac
+# Both personas work against Jira and the PR host, so a fresh setup (and an upgrade) carries working defaults and `sdkit doctor` lists what is still to fill in.
+# Only exact old defaults change (TRACKER=none, no JIRA_EGRESS line); values you set are never touched.
+if [ "$SDKIT_ENV" != standalone ]; then
+  envf="$TARGET/$KIT_DIR/$ENV_FILE"; locf="$TARGET/$KIT_DIR/sdkit.local.env"; [ "$KIT_DIR" = .sdkit ] || locf="$envf"
+  if grep -qE '^TRACKER=(none)?$' "$envf"; then sed -i.bak -E 's/^TRACKER=(none)?$/TRACKER=jira/' "$envf" && rm -f "$envf.bak"; say "  set    $KIT_DIR/$ENV_FILE: TRACKER=jira ($SDKIT_ENV works against Jira)"; fi
+  env_key JIRA_BASE_URL "" "Your Jira site, e.g. https://your-company.atlassian.net  (FILL IN: sdkit doctor lists what is missing)"
+  env_key JIRA_PROJECT "" "Jira project key the tasks live in, e.g. TFF  (FILL IN)"
+  env_key JIRA_SUBTASK_TYPE "Sub-task" "Issue type of the subtasks the kit creates."
+  env_key JIRA_API_VERSION 3 "Jira REST version. 3 = Jira Cloud (descriptions are sent as Atlassian Document Format); 2 = Data Center / plain text."
+  if [ -f "$locf" ] && ! grep -qE '^[[:space:]]*JIRA_EGRESS=' "$locf"; then
+    printf '\n# Jira egress: allow = scripts/jira.sh may call the Jira API from this machine (set by sdkit init for the %s env; remove to turn the network off).\nJIRA_EGRESS=allow\n' "$SDKIT_ENV" >> "$locf"
+    say "  added  ${locf#$TARGET/}: JIRA_EGRESS=allow"
+  fi
+fi
 if [ "$SDKIT_ENV" != standalone ]; then
   # review rubrics per artifact (project-owned: edit freely; existing files are kept)
   for f in "$SCAFFOLD_ROOT"/templates/review.d/*; do
@@ -356,6 +370,7 @@ else
   say "           npm install -g @fission-ai/openspec        (or re-run with --install-openspec)"
 fi
 
+[ "$SDKIT_ENV" = standalone ] || say "Next: run 'sdkit doctor'. Its setup checklist lists the Jira and pull-request values still to fill in, most important first."
 finish_manifest
 
 # Generated files outside .sdkit/ are identical on every machine: hide them from git here (this clone only), keep the project's .gitignore untouched.

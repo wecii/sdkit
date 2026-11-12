@@ -145,6 +145,19 @@ expect "open-pr --check lists a missing Bitbucket token and opens nothing" 2 env
 git -C "$pr" remote set-url origin https://github.com/o/r.git
 expect "open-pr --check passes for github with an authenticated gh" 0 env PR_HOST=github bash -c "$(declare -f oprc); pr='$pr' prbin='$prbin' KIT='$KIT'; oprc"
 
+# --- analyst/developer setup: working Jira defaults and a prioritized checklist ---
+ja="$T/ja"; mkdir -p "$ja"; sh_repo "$ja"; git -C "$ja" remote add origin https://bitbucket.org/acme/proj.git
+(cd "$ja" && env -u JIRA_API_TOKEN -u BITBUCKET_TOKEN "$KIT/bin/init.sh" --env analyst --host claude --mode copy "$ja" >/dev/null 2>&1)
+expect "analyst init sets TRACKER=jira and JIRA_API_VERSION" 0 bash -c "grep -q '^TRACKER=jira' '$ja/.sdkit/sdkit.env' && grep -q '^JIRA_API_VERSION=3' '$ja/.sdkit/sdkit.env'"
+expect "analyst init enables Jira egress in the personal file only" 0 bash -c "grep -q '^JIRA_EGRESS=allow' '$ja/.sdkit/sdkit.local.env' && ! grep -q 'JIRA_EGRESS' '$ja/.sdkit/sdkit.env'"
+dj() { (cd "$ja" && env -u JIRA_API_TOKEN -u BITBUCKET_TOKEN "$KIT/bin/doctor.sh" "$ja" 2>&1); }
+expect "doctor lists the Jira values to fill in, in order" 0 bash -c "$(declare -f dj); ja='$ja' KIT='$KIT'; [ \"\$(dj | grep -o 'TODO [0-9]*\\. [A-Z_]*' | awk '{print \$3}' | head -4 | tr '\\n' ' ')\" = 'JIRA_BASE_URL JIRA_PROJECT JIRA_USER JIRA_API_TOKEN ' ]"
+expect "doctor lists the missing Bitbucket token" 0 bash -c "$(declare -f dj); ja='$ja' KIT='$KIT'; dj | grep -q 'PR host:.*BITBUCKET_TOKEN'"
+(cd "$ja" && env -u JIRA_API_TOKEN "$KIT/bin/upgrade.sh" "$ja" >/dev/null 2>&1)
+expect "upgrade adds nothing twice" 0 bash -c "[ \"\$(grep -c '^JIRA_EGRESS' '$ja/.sdkit/sdkit.local.env')\" = 1 ] && [ \"\$(grep -c '^JIRA_BASE_URL=' '$ja/.sdkit/sdkit.env')\" = 1 ] && [ \"\$(grep -c '^TRACKER=' '$ja/.sdkit/sdkit.env')\" = 1 ]"
+printf 'JIRA_BASE_URL=https://acme.atlassian.net\nJIRA_PROJECT=ACME\n' >> "$ja/.sdkit/sdkit.env"; printf 'JIRA_USER=a@b.c\nJIRA_API_TOKEN=tok\n' >> "$ja/.sdkit/sdkit.local.env"
+expect "filled-in values leave only the PR host item" 0 bash -c "$(declare -f dj); ja='$ja' KIT='$KIT'; dj | grep -c 'TODO [0-9]*\\.' | grep -qx 1"
+
 # --- Homebrew formula, publishability scan, sdkit entry point ---
 gf="$T/gf"; mkdir -p "$gf/packaging/homebrew" "$gf/.claude-plugin"; cp "$KIT/packaging/homebrew/gen-formula.sh" "$gf/packaging/homebrew/"; echo '{"version":"9.9.9"}' > "$gf/.claude-plugin/plugin.json"
 git -C "$gf" init -q -b main; git -C "$gf" remote add origin git@example.org:o/r.git; git -C "$gf" -c user.email=t@t -c user.name=t commit -q --allow-empty -m x

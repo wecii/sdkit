@@ -272,5 +272,42 @@ if [ -d "$TARGET/openspec" ]; then
   fi
 fi
 
+# ── Jira and pull-request host: what still has to be filled in, most important first ───────────────────────────────────────────────
+# Shown for the analyst and developer envs (or any repo with TRACKER=jira). A value counts as set when it is in the settings files or exported in the shell.
+SDKIT_ENV_QUIET=1 sdkit_env_load_file "$env_file"; SDKIT_ENV_QUIET=1 sdkit_env_load_file "$TARGET/$KIT_DIR/sdkit.local.env"
+if [ "${ENVP:-standalone}" != standalone ] || [ "${TRACKER:-none}" = jira ]; then
+  say ""; say "setup checklist (Jira and pull requests)"
+  n=0
+  todo() { n=$((n + 1)); WARNS=$((WARNS + 1)); say "  TODO $n. $1"; say "          $2"; }
+  loc="$KIT_DIR/sdkit.local.env"; [ -f "$TARGET/$loc" ] || loc="$KIT_DIR/$ENV_NAME"
+  [ "${TRACKER:-none}" = jira ] || todo "TRACKER is not jira" "$KIT_DIR/$ENV_NAME: TRACKER=jira"
+  case "${JIRA_BASE_URL:-}" in https://*|http://*) ;; *) todo "JIRA_BASE_URL (your Jira site)" "$KIT_DIR/$ENV_NAME: JIRA_BASE_URL=https://your-company.atlassian.net" ;; esac
+  [ -n "${JIRA_PROJECT:-}" ] || todo "JIRA_PROJECT (the project key, e.g. TFF)" "$KIT_DIR/$ENV_NAME: JIRA_PROJECT=TFF"
+  [ -n "${JIRA_USER:-}" ] || todo "JIRA_USER (your Atlassian account e-mail)" "$loc: JIRA_USER=you@company.com"
+  jtv="${JIRA_TOKEN_ENV:-JIRA_API_TOKEN}"; case "$jtv" in ''|*[!A-Za-z0-9_]*) jtv="" ;; esac
+  if [ -z "$jtv" ]; then todo "JIRA_TOKEN_ENV holds something that is not a variable name (a token pasted there is exposed: revoke it)" "$loc: remove JIRA_TOKEN_ENV, set JIRA_API_TOKEN=<new token>"
+  elif [ -z "${!jtv:-}" ]; then todo "$jtv (your Jira API token; create it at id.atlassian.com > Security > API tokens)" "$loc: $jtv=<token>   (git-ignored file) or export $jtv in your shell"; fi
+  [ "${JIRA_EGRESS:-}" = allow ] || todo "JIRA_EGRESS is not allow: scripts/jira.sh will not call Jira" "$loc: JIRA_EGRESS=allow"
+  # pull-request host: the same check the publish step runs first
+  if [ -x "$SCAFFOLD_ROOT/scripts/open-pr.sh" ] && git -C "$TARGET" remote get-url origin >/dev/null 2>&1; then
+    prrc=0; prout="$("$SCAFFOLD_ROOT/scripts/open-pr.sh" --repo-dir "$TARGET" --check 2>&1)" || prrc=$?
+    if [ "$prrc" -ne 0 ]; then
+      while IFS= read -r l; do case "$l" in "  - "*) todo "PR host: ${l#  - }" "(see docs/hosts.md; secrets go in $loc, never in the shared file)" ;; esac; done <<< "$prout"
+    fi
+  fi
+  # live Jira check, only when every Jira value is there and egress is allowed
+  if [ "$n" -eq 0 ] && [ -n "$jtv" ] && command -v curl >/dev/null 2>&1; then
+    jcode="$(printf 'header = "Authorization: Basic %s"\n' "$(printf '%s:%s' "$JIRA_USER" "${!jtv}" | base64 | tr -d '\n')" | curl -s -o /dev/null -m 10 -w '%{http_code}' -K - "${JIRA_BASE_URL%/}/rest/api/2/myself" 2>/dev/null || echo 000)"
+    case "$jcode" in
+      200) ok "Jira reachable and the credentials work" ;;
+      401|403) todo "Jira refused the credentials (HTTP $jcode)" "check JIRA_USER (account e-mail) and that $jtv is a valid, unexpired API token" ;;
+      000) warn "Jira not reachable from here (offline or blocked): credentials not verified" ;;
+      *) warn "Jira answered HTTP $jcode on the credential check" ;;
+    esac
+  fi
+  [ "$n" -gt 0 ] || ok "Jira and PR-host settings are complete"
+  [ "$n" -eq 0 ] || say "  ($n item(s) above, in priority order; run 'sdkit doctor' again after each change)"
+fi
+
 say ""; say "doctor: $FAILS failure(s), $WARNS warning(s)"
 [ "$FAILS" -eq 0 ]

@@ -27,6 +27,17 @@ Several projects: run `upgrade.sh` once for each. To do it in bulk:
 for p in ~/code/projectA ~/code/projectB; do <kit>/bin/upgrade.sh "$p"; done
 ```
 
+## Jira and pull-request defaults (1.8.0)
+
+For the `analyst` and `developer` envs, `init` and `upgrade` now set what a Jira + Bitbucket (or GitHub/GitLab) setup needs, and `sdkit doctor` ends with a **setup checklist** that names what is still empty, most important first:
+
+1. `JIRA_BASE_URL`, `JIRA_PROJECT` (shared `sdkit.env`; added empty, you fill them in)
+2. `JIRA_USER`, then the token `JIRA_API_TOKEN` (personal `sdkit.local.env`, git-ignored, or exported in your shell)
+3. `JIRA_EGRESS=allow` (set for you in `sdkit.local.env`; remove it to turn the network off)
+4. The PR host: for Bitbucket `BITBUCKET_TOKEN` (an `ATCTT...` access token is sent as Bearer; an Atlassian API token also needs `BITBUCKET_EMAIL`)
+
+Changed by the upgrade, once and only from the old default: `TRACKER=none` becomes `TRACKER=jira`. Added if missing: `JIRA_SUBTASK_TYPE=Sub-task`, `JIRA_API_VERSION=3` (Jira Cloud; descriptions go out as Atlassian Document Format; use 2 for Data Center). Nothing you set is overwritten. When every value is present, doctor also checks the Jira credentials against the site and the Bitbucket token against the API.
+
 ## Manual steps per version
 
 ### 0.3 → 0.4
