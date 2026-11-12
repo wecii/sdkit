@@ -636,7 +636,7 @@ Details, flows and limits: [role-aware.md](role-aware.md).
 | `JIRA_BASE_URL`, `JIRA_PROJECT`, `JIRA_SUBTASK_TYPE`, `JIRA_CHANGE_TYPE`, `JIRA_LINK_TYPE`, `JIRA_API_VERSION`, `JIRA_SEARCH_PATH` | empty / `Sub-task` / `3` | Jira connection and issue types; commented out in `sdkit.env` until set. `JIRA_USER` (your account), `JIRA_EGRESS` and `JIRA_TOKEN_ENV` are personal: `sdkit.local.env` |
 | `JIRA_BLOCKED_STATUS`, `JIRA_REVIEW_STATUS` | `Blocked`, `In Review` | Status names the ticket moves to when a change request blocks the task, and when evidence is synced |
 | `SDD_JIRA_CMD` | empty (`scripts/jira.sh`) | Replaces the Jira command (tests, or a bridge with the same verbs and exit codes) |
-| `JIRA_EGRESS`, `JIRA_TOKEN_ENV` **(personal)** | empty | `allow` lets `jira.sh` call the API from this machine; the name of the variable that holds the token (the token never goes in a settings file) |
+| `JIRA_EGRESS`, `JIRA_TOKEN_ENV` **(personal)** | empty | `allow` lets `jira.sh` call the API from this machine; the name of the variable that holds the token. `JIRA_API_TOKEN` may be written in the personal, git-ignored `sdkit.local.env` (`jira.sh` exports it); it is refused in the shared `sdkit.env` and when `sdkit.local.env` is not git-ignored |
 | `VERIFY_FAST_CMD`, `VERIFY_TEST_CMD` | empty | `generic` only: fast check and test command (run at the repo root) |
 | `PY_RUNNER` | empty | `python` only: tool prefix (`uv run`, `poetry run`); if empty, from the lockfile |
 | `VERIFY_CMD` | empty | Empty: the plugin's engine. Set: path relative to the repo (copy mode) |

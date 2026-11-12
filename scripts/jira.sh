@@ -18,6 +18,17 @@ AD="$here/../adapters.d/jira.sh"; [ -x "$top/${KIT_DIR:-.sdkit}/adapters.d/jira.
 export JIRA_BASE_URL="${JIRA_BASE_URL:-}" JIRA_EGRESS="${JIRA_EGRESS:-}" JIRA_TOKEN_ENV="${JIRA_TOKEN_ENV:-}" JIRA_USER="${JIRA_USER:-}" JIRA_API_VERSION="${JIRA_API_VERSION:-2}"
 [ -n "$JIRA_TOKEN_ENV" ] || unset JIRA_TOKEN_ENV
 die() { echo "jira: $1" >&2; exit "${2:-5}"; }
+# The token may be written in the personal, git-ignored sdkit.local.env (JIRA_API_TOKEN=..., or the variable named by JIRA_TOKEN_ENV): the
+# settings files are loaded as shell variables, so export it for the adapter. Never accepted from the committed sdkit.env, and refused when
+# sdkit.local.env is inside a git work tree but not ignored. A token already in the environment needs none of this.
+_kd="$top/${KIT_DIR:-.sdkit}"; _tv="${JIRA_TOKEN_ENV:-JIRA_API_TOKEN}"; case "$_tv" in ''|*[!A-Za-z0-9_]*) _tv="" ;; esac
+if [ -n "$_tv" ] && grep -Eq "^[[:space:]]*(export[[:space:]]+)?$_tv=" "$_kd/sdkit.local.env" 2>/dev/null; then
+  ! grep -Eq "^[[:space:]]*(export[[:space:]]+)?$_tv=" "$_kd/sdkit.env" 2>/dev/null || die "$_tv is set in the shared sdkit.env: a token must never be committed. Remove it there (rotate the token) and keep it only in sdkit.local.env" 3
+  if git -C "$top" rev-parse --is-inside-work-tree >/dev/null 2>&1 && ! git -C "$top" check-ignore -q "$_kd/sdkit.local.env" 2>/dev/null; then
+    die "sdkit.local.env holds the token but is not git-ignored: add it to .gitignore first" 3
+  fi
+  [ -z "${!_tv:-}" ] || export "$_tv"
+fi
 ad() { "$AD" "$@"; }   # stdout = response body; the adapter's exit code is the caller's
 
 PROBLEMS='def nes: type == "string" and test("\\S");

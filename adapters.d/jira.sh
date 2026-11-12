@@ -5,7 +5,8 @@
 # Prints the raw Jira response body on stdout on success (2xx). Settings (sdkit.local.env / environment; the token is never read from a repo file):
 #   JIRA_BASE_URL       e.g. https://acme.atlassian.net                           (required)
 #   JIRA_EGRESS=allow   REQUIRED: task text leaves this machine. No value, no request.
-#   JIRA_TOKEN_ENV      NAME of the environment variable holding the token (default JIRA_API_TOKEN)
+#   JIRA_TOKEN_ENV      NAME of the variable holding the token (default JIRA_API_TOKEN). The variable is the environment, or JIRA_API_TOKEN=... in the
+#                       personal git-ignored sdkit.local.env (scripts/jira.sh exports it); never in the committed sdkit.env
 #   JIRA_USER           if set: Basic auth user:token (Jira Cloud); else Bearer token (Data Center PAT)
 #   JIRA_API_VERSION    REST version, default 2 (description is plain text);  JIRA_SEARCH_PATH  default search
 # The token goes to curl on stdin (-K -), never on the command line. Exit: 0 ok, 2 usage, 3 egress off / no token / 401 / 403, 5 not found or any other failure.
@@ -22,7 +23,7 @@ die() { local m="jira adapter: $1"; [ -n "$tok" ] && m="${m//"$tok"/***}"; m="$(
 keyok() { case "$1" in [A-Z]*-[0-9]*) case "$1" in *[!A-Za-z0-9_-]*) return 1 ;; esac; return 0 ;; esac; return 1; }
 [ "${JIRA_EGRESS:-}" = allow ] || die "JIRA_EGRESS=allow is not set: task text would leave this machine, so nothing was sent" 3
 base="${JIRA_BASE_URL:-}"; case "$base" in http://*|https://*) ;; *) die "JIRA_BASE_URL is not set (http[s]://host)" 2 ;; esac
-tv="${JIRA_TOKEN_ENV:-JIRA_API_TOKEN}"; case "$tv" in ''|*[!A-Za-z0-9_]*) die "JIRA_TOKEN_ENV must be a variable NAME" 2 ;; esac
+tv="${JIRA_TOKEN_ENV:-JIRA_API_TOKEN}"; case "$tv" in ''|*[!A-Za-z0-9_]*) die "JIRA_TOKEN_ENV must be a variable NAME such as JIRA_API_TOKEN, not the token itself: put the token in sdkit.local.env as JIRA_API_TOKEN=... (or export it)" 2 ;; esac
 tok="${!tv:-}"; [ -n "$tok" ] || die "no token: the variable named by JIRA_TOKEN_ENV ($tv) is empty" 3
 api="${base%/}/rest/api/${JIRA_API_VERSION:-2}"
 method=GET; path=""; body=""

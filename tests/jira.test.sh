@@ -21,4 +21,10 @@ eq "assignee is never sent"               "$(grep -ci 'assignee' "$T/log")" 0
 eq "egress off => 3, nothing sent"        "$(: > "$T/log"; EG= run fetch PRJ-7 >/dev/null 2>&1; echo $?):$(grep -c '^REQ' "$T/log")" "3:0"
 o="$(FAKE_MODE=500 run upsert S1:T10 "${TASK//T9/T10}" 2>&1)"; rc=$?; eq "HTTP 500: non-zero, no success output" "$rc:$(printf '%s' "$o" | grep -c '"key"')" "5:0"
 r="$(run change-request PRJ-7 '{"reason":"AC-1 contradicts AC-2"}')"; eq "change-request: created and linked to the subtask" "$(jq -r .blocks <<< "$r"):$(grep '^REQ POST issueLink' "$T/log" | grep -c 'PRJ-7')" "PRJ-7:1"
+# token written in the personal settings file
+printf 'JIRA_API_TOKEN=tok-FROMFILE1\n' > "$T/proj/.sdkit/sdkit.local.env"; : > "$T/log"
+o="$(env -u MY_JIRA_TOK JIRA_BASE_URL=https://jira.example JIRA_EGRESS=allow "$J" fetch PRJ-7 2>&1)"; eq "token from sdkit.local.env is used (stdin only)" "$?:$(grep -c 'tok-FROMFILE1' "$T/log"):$(grep '^ARGS' "$T/log" | grep -c 'tok-FROMFILE1')" "0:1:0"
+printf 'JIRA_API_TOKEN=tok-COMMITTED\n' > "$T/proj/.sdkit/sdkit.env"
+o="$(env -u MY_JIRA_TOK JIRA_BASE_URL=https://jira.example JIRA_EGRESS=allow "$J" fetch PRJ-7 2>&1)"; eq "token in the shared sdkit.env is refused (3)" "$?:$(printf '%s' "$o" | grep -c 'tok-COMMITTED')" "3:0"
+rm -f "$T/proj/.sdkit/sdkit.env" "$T/proj/.sdkit/sdkit.local.env"
 echo "jira: $pass passed, $failed failed"; [ "$failed" = 0 ]
