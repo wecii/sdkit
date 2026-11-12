@@ -244,3 +244,7 @@ No manual step. `sdkit upgrade` adds Claude Code allow entries (when missing) so
 ## 1.6.2: the round cap walks findings one by one
 
 No manual step. At the spec-review round cap, `generate-specs` now goes through the open findings with you one at a time (proposed edit, then apply / answer / accept / reject) instead of listing them. `review.sh begin <id> --final` opens one verification round outside the cap (once per review id), and `review.sh accept` records `JIRA_USER` as who accepted when `--who` is not given. `JIRA_USER` moved out of the shared `sdkit.env` template: set it in your own `sdkit.local.env` (your Jira account, e-mail on Jira Cloud). An existing `JIRA_USER` in `sdkit.env` keeps working, but belongs in `sdkit.local.env`.
+
+## 1.7.0: PR host and Bitbucket token in sdkit.local.env
+
+No manual step. `sdkit upgrade` appends `PR_HOST`, `BITBUCKET_EMAIL`, `BITBUCKET_TOKEN` and `PR_TOKEN_REPO` to your `sdkit.local.env` (empty, or `auto` for `PR_HOST`). If `open-pr.sh` fails with "no token", put your Bitbucket token in `BITBUCKET_TOKEN` there (git-ignored); never in the shared `sdkit.env`. A `PR_HOST` set in `sdkit.env` or the environment still wins.
