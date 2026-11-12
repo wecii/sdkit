@@ -17,7 +17,7 @@ Status: design contract for the work packages F01-F14. Agents implement against 
 - Immutable technical reference = git commit SHA. Version is a label.
 - Versions: 0.1 first draft, 0.N pre-approval updates, 1.0 first approved, 1.N compatible, N.0 breaking.
 - 1.0 promotion: the approval PR's last commit sets version 1.0 / status approved; the human merge is the approval. generate-tasks requires: the PR is merged, the spec on `main` at the given SHA has status approved, and the SHA is reachable from `origin/main`. Nobody commits to `main` directly.
-- Atomic publish: meta is written only after commit+push+PR succeeded; a failure leaves meta and version untouched. Same input twice = no new version.
+- Atomic publish: the version is recorded in a meta commit BEFORE push and PR (the PR always has a diff, the meta travels with the spec); a failed push rolls the meta commit back; a failed PR step leaves the recorded version and a rerun only opens the PR. Same input twice = no new version.
 - Branch: `spec/<id>` (deterministic), reused if present. PR is created once (look up by head first), later runs update it. Never force-push.
 
 ## Review adapter (F04), `scripts/review.sh`

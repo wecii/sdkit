@@ -11,8 +11,8 @@ echo "# s1 v1" > specs/s1/spec.md; echo "body" > "$T/body.md"; echo '[]' > "$T/n
 cat > "$BIN/gh" <<EOS
 #!/usr/bin/env bash
 case "\$1 \$2" in
-  "pr list") [ -f "$T/pr" ] && echo "https://example.test/pr/1"; exit 0 ;;
-  "pr create") echo x >> "$T/pr"; echo "https://example.test/pr/1" ;;
+  "pr list") [ -f "$T/failpr" ] && exit 1; [ -f "$T/pr" ] && echo "https://example.test/pr/1"; exit 0 ;;
+  "pr create") [ -f "$T/failpr" ] && exit 1; echo x >> "$T/pr"; echo "https://example.test/pr/1" ;;
   "pr edit") echo e >> "$T/edits" ;;
 esac
 EOS
@@ -48,6 +48,21 @@ eq "staged pre-spec path refused (rc 1)" "$(rc pub)" 1
 git reset -q HEAD -- prespec/raw.md; rm -f prespec/raw.md
 check "retry finishes the job" pub
 eq "version 0.3 after the retry" "$(ver)" "0.3"
+
+echo "PR step fails after the version was recorded"
+echo "# s1 v4" >> specs/s1/spec.md; reviewed; touch "$T/failpr"
+eq "failed PR step is reported (rc 1)" "$(rc pub)" 1
+eq "version already recorded (0.4) and pushed" "$(ver)/$(git --git-dir="$O" show refs/heads/spec/s1:specs/s1/spec.meta.json | jq -r .version)" "0.4/0.4"
+rm -f "$T/failpr"; check "rerun only opens the PR" pub
+eq "no extra version after the rerun" "$(ver)/$(hist)" "0.4/4"
+
+echo "content merged earlier, version never recorded (PR opened by hand)"
+mkdir -p specs/s2; echo "# s2" > specs/s2/spec.md; "$S" init-meta s2 >/dev/null; git add specs/s2; git commit -q -m "spec s2 merged by hand"
+git push -q origin HEAD:main; git fetch -q origin; git checkout -q -B spec/s2 origin/main
+"$RV" begin s2 >/dev/null && "$RV" record s2 --verdict PASS --isolation fresh --findings "$T/none.json" >/dev/null
+check "publish records the version although the content is already on main" "$S" publish s2 --title "Spec s2" --body-file "$T/body.md"
+eq "the branch is ahead of main by exactly the meta commit" "$(git rev-list --count origin/main..spec/s2)" 1
+git checkout -q spec/s1
 
 echo "approval"
 check "promote prepares 1.0" "$S" promote s1

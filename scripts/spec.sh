@@ -90,29 +90,43 @@ $bad"
   [ -f "$(meta_of "$id")" ] || "$0" init-meta "$id" >/dev/null || die "cannot create meta"
   h="$(cur_hash "$id")"; [ -n "$h" ] || die "cannot hash $d"
   n="$(jq '.history | length' "$(meta_of "$id")")"
-  if [ "$n" -gt 0 ] && [ "$h" = "$(mget "$id" .contentHash)" ]; then echo "spec: '$id' unchanged since version $(mget "$id" .version): nothing to publish"; exit 0; fi
+  b="spec/$id"
+  if [ "$n" -gt 0 ] && [ "$h" = "$(mget "$id" .contentHash)" ]; then
+    # Same content as the recorded version: no new version. The PR may still be missing (an earlier run recorded the version but
+    # stopped at the PR step), so when this branch is ahead of the base, push it and open or reuse the PR.
+    if [ "$(branch_now)" = "$b" ] && G rev-parse --verify -q "origin/$BASE" >/dev/null && [ "$(G rev-list --count "origin/$BASE..HEAD" 2>/dev/null || echo 0)" -gt 0 ]; then
+      G push -q -u origin "$b" || die "push failed; fix the remote and run publish again"
+      url="$(cd "$REPO" && "$HERE/open-pr.sh" --repo-dir "$REPO" --reuse "$title" "$bf" "$BASE")" || die "opening the pull request failed; the version is already recorded, run publish again (it only opens the PR)"
+      echo "spec: '$id' unchanged since version $(mget "$id" .version): pull request $(printf '%s\n' "$url" | tail -1)"; exit 0
+    fi
+    echo "spec: '$id' unchanged since version $(mget "$id" .version): nothing to publish"; exit 0
+  fi
   if [ "$n" -eq 0 ]; then newv="0.1"; else newv="$(bump "$(mget "$id" .version)" "$brk")"; fi
   ensure_branch "$id" || die "cannot switch to spec/$id (never forced)"
-  b="spec/$id"; is_protected "$b" && die "branch $b is protected"
+  is_protected "$b" && die "branch $b is protected"
   G add -- "$d" || die "git add failed"
   if ! G diff --cached --quiet -- "$d"; then
     G commit -q -m "docs(spec): $id v$newv" -- "$d" || die "commit failed"
   fi
-  G push -q -u origin "$b" || die "push failed; meta and version untouched, fix the remote and run publish again"
-  url="$(cd "$REPO" && "$HERE/open-pr.sh" --repo-dir "$REPO" --reuse "$title" "$bf" "$BASE")" || die "opening the pull request failed; meta and version untouched, run publish again"
-  url="$(printf '%s\n' "$url" | tail -1)"
-  if [ "${PR_HOST:-}" = github ] && command -v gh >/dev/null 2>&1; then
-    ( cd "$REPO" && gh pr edit "$b" --title "$title" --body-file "$bf" >/dev/null ) || echo "spec: warning: could not update the PR title/body" >&2
-  fi
+  # The version is recorded in a commit BEFORE the push and the PR: the PR then always has a diff (even when the content was merged
+  # earlier and only the meta is new) and the meta travels with the spec in the same PR. A failed push rolls the meta commit back.
   sha="$(G rev-parse HEAD)"; old="$(cat "$(meta_of "$id")")"
   new="$(printf '%s' "$old" | jq -c --arg v "$newv" --arg h "$h" --arg sha "$sha" --arg at "$(now)" --arg id "$id" \
     --argjson rv "$(jq -c '.evidence // {} | {verdict, contentHash, round, at}' "$REPO/${KIT_DIR:-.sdkit}/work/review/$id/state.json" 2>/dev/null || echo '{}')" \
     '. + {id:$id, version:$v, status:"draft", contentHash:$h, review:$rv} | .history += [{version:$v, sha:$sha, at:$at, contentHash:$h}]')" || die "cannot compute the new meta"
   wmeta "$id" "$new" || die "cannot write the meta"
-  if ! { G add -- "$(dir_of "$id")/spec.meta.json" && G commit -q -m "chore(spec): record $id v$newv" -- "$(dir_of "$id")/spec.meta.json" && G push -q origin "$b"; }; then
-    printf '%s\n' "$old" > "$(meta_of "$id")"; G reset -q HEAD -- "$(dir_of "$id")/spec.meta.json" 2>/dev/null
-    G log -1 --format=%s | grep -q "^chore(spec): record $id" && G reset -q --soft HEAD~1 && G reset -q HEAD -- "$(dir_of "$id")/spec.meta.json"
-    die "recording the version failed; meta restored, run publish again"
+  restore_meta() { printf '%s\n' "$old" > "$(meta_of "$id")"; G reset -q HEAD -- "$(dir_of "$id")/spec.meta.json" 2>/dev/null || true; }
+  if ! { G add -- "$(dir_of "$id")/spec.meta.json" && G commit -q -m "chore(spec): record $id v$newv" -- "$(dir_of "$id")/spec.meta.json"; }; then
+    restore_meta; die "recording the version failed; meta restored, run publish again"
+  fi
+  if ! G push -q -u origin "$b"; then
+    G reset -q --soft HEAD~1 && restore_meta
+    die "push failed; meta and version untouched, fix the remote and run publish again"
+  fi
+  url="$(cd "$REPO" && "$HERE/open-pr.sh" --repo-dir "$REPO" --reuse "$title" "$bf" "$BASE")" || die "pushed and recorded $id v$newv, but opening the pull request failed: fix the cause and run publish again (it only opens the PR)"
+  url="$(printf '%s\n' "$url" | tail -1)"
+  if [ "${PR_HOST:-}" = github ] && command -v gh >/dev/null 2>&1; then
+    ( cd "$REPO" && gh pr edit "$b" --title "$title" --body-file "$bf" >/dev/null ) || echo "spec: warning: could not update the PR title/body" >&2
   fi
   echo "spec: published '$id' v$newv at $sha on $b -> $url" ;;
 promote)
