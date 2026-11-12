@@ -1,8 +1,8 @@
 class Sdkit < Formula
   desc "Spec-driven development workflow and guards for AI coding agents (Claude Code, Codex, OpenCode, Cursor, Gemini)"
   homepage "https://github.com/wecii/sdkit"
-  url "https://github.com/wecii/sdkit.git", using: :git, tag: "v1.7.4", revision: "51b7a85efc17cdad8a23a1738486b284224c650e"
-  version "1.7.4"
+  url "https://github.com/wecii/sdkit.git", using: :git, tag: "v1.7.5", revision: "5f1adbb201b2037451de9f7bc2a32fe397df1946"
+  version "1.7.5"
   head "https://github.com/wecii/sdkit.git", using: :git, branch: "master"
 
   depends_on "jq"
