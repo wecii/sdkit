@@ -53,19 +53,23 @@ if [ "$CHECK" = 1 ]; then
     bitbucket)
       command -v python3 >/dev/null || need "install python3 (open-pr.sh uses it for the Bitbucket API)"
       c_email="${BITBUCKET_EMAIL:-$(git config user.email || true)}"
-      [ -n "$c_email" ] || need "set the Bitbucket account email: export BITBUCKET_EMAIL=you@company.com  (or git config user.email)"
       c_url="$(git -C "${PR_TOKEN_REPO:-$ROOT}" remote get-url origin 2>/dev/null || true)"
       c_token="${BITBUCKET_TOKEN:-}"
       if [ -z "$c_token" ]; then
         re='^https://[^@/]+:[^@/]+@bitbucket\.org/'; [[ "$c_url" =~ $re ]] && c_token="from origin URL"
       fi
+      c_bearer=0; case "${BITBUCKET_TOKEN:-}" in ATCTT*) c_bearer=1 ;; esac
+      [ "$c_bearer" = 1 ] || [ -n "$c_email" ] || need "set the Bitbucket account email: export BITBUCKET_EMAIL=you@company.com  (or git config user.email)"
       [ -n "$c_token" ] || need "set a Bitbucket API token (repo + pull request write): export BITBUCKET_TOKEN=...   (create it in Bitbucket > Personal settings > API tokens)"
-      if [ -n "$c_token" ] && [ -n "$c_email" ] && command -v curl >/dev/null 2>&1; then
+      if [ -n "$c_token" ] && { [ "$c_bearer" = 1 ] || [ -n "$c_email" ]; } && command -v curl >/dev/null 2>&1; then
         t="${BITBUCKET_TOKEN:-${c_url#https://*:}}"; t="${t%%@*}"
-        code="$(curl -s -o /dev/null -m 10 -w '%{http_code}' -u "$c_email:$t" https://api.bitbucket.org/2.0/user 2>/dev/null || echo 000)"
+        # the repo endpoint needs only the repository-read scope that opening a PR needs anyway (/user needs an extra account scope)
+        c_slug="$(git remote get-url origin | sed -E 's#^https://([^@/]+@)?bitbucket\.org/##; s#\.git$##')"
+        case "$t" in ATCTT*) set -- -H "Authorization: Bearer $t" ;; *) set -- -u "$c_email:$t" ;; esac
+        code="$(curl -s -o /dev/null -m 10 -w '%{http_code}' "$@" "https://api.bitbucket.org/2.0/repositories/$c_slug" 2>/dev/null || echo 000)"
         case "$code" in
           200) ;;
-          401|403) need "Bitbucket rejected the credentials (HTTP $code): check BITBUCKET_EMAIL is the account email and the token is valid" ;;
+          401|403) need "Bitbucket rejected the credentials (HTTP $code): ATCTT... access tokens are sent as Bearer; other tokens need BITBUCKET_EMAIL to be the Bitbucket account email, and the token must allow repository read + pull request write" ;;
           000) echo "  (warning: could not reach api.bitbucket.org, credentials not verified)" >&2 ;;
           *) echo "  (warning: Bitbucket answered HTTP $code on the credential check)" >&2 ;;
         esac
@@ -102,7 +106,7 @@ esac
 # local repo whose origin URL does, or export BITBUCKET_TOKEN.
 TOKEN_REMOTE="$(git -C "${PR_TOKEN_REPO:-$ROOT}" remote get-url origin)"
 ACCOUNT_EMAIL="${BITBUCKET_EMAIL:-$(git config user.email || true)}"
-[ -n "$ACCOUNT_EMAIL" ] || { echo "set BITBUCKET_EMAIL or git config user.email (the Bitbucket account email)" >&2; exit 2; }
+case "${BITBUCKET_TOKEN:-}" in ATCTT*) : ;; *) [ -n "$ACCOUNT_EMAIL" ] || { echo "set BITBUCKET_EMAIL or git config user.email (the Bitbucket account email)" >&2; exit 2; } ;; esac
 REMOTE="$(git remote get-url origin)"
 PR_TOKEN="${BITBUCKET_TOKEN:-}" PR_EMAIL="$ACCOUNT_EMAIL" PR_REMOTE="$REMOTE" PR_TOKEN_REMOTE="$TOKEN_REMOTE" PR_TITLE="$TITLE" PR_SOURCE="$SOURCE" \
 PR_DEST="$DEST" PR_DESC="$DESCRIPTION_FILE" PR_REUSE="$REUSE" python3 -I - <<'PY'
@@ -116,7 +120,11 @@ if not repo_match:
     raise SystemExit("origin is not a Bitbucket URL")
 token = os.environ.get("PR_TOKEN") or creds.group(1).split(":", 1)[1]
 repo = repo_match.group(1)
-auth = base64.b64encode(f"{os.environ['PR_EMAIL']}:{token}".encode()).decode()
+# ATCTT... = repository/workspace access token: Bearer. Anything else: Basic with the account email.
+if token.startswith("ATCTT"):
+    auth_header = f"Bearer {token}"
+else:
+    auth_header = "Basic " + base64.b64encode(f"{os.environ['PR_EMAIL']}:{token}".encode()).decode()
 body = {
     "title": os.environ["PR_TITLE"],
     "source": {"branch": {"name": os.environ["PR_SOURCE"]}},
@@ -127,7 +135,7 @@ body = {
 if os.environ.get("PR_REUSE") == "1":
     import urllib.parse
     q = urllib.parse.quote(f'source.branch.name="{os.environ["PR_SOURCE"]}" AND state="OPEN"')
-    lookup = urllib.request.Request(f"https://api.bitbucket.org/2.0/repositories/{repo}/pullrequests?q={q}", headers={"Authorization": f"Basic {auth}"})
+    lookup = urllib.request.Request(f"https://api.bitbucket.org/2.0/repositories/{repo}/pullrequests?q={q}", headers={"Authorization": auth_header})
     try:
         with urllib.request.urlopen(lookup) as response:
             found = json.load(response).get("values") or []
@@ -137,7 +145,7 @@ if os.environ.get("PR_REUSE") == "1":
         raise SystemExit(f"HTTP {err.code} while looking for an existing PR: {err.read().decode()[:300]}")
 request = urllib.request.Request(
     f"https://api.bitbucket.org/2.0/repositories/{repo}/pullrequests", data=json.dumps(body).encode(), method="POST",
-    headers={"Authorization": f"Basic {auth}", "Content-Type": "application/json"})
+    headers={"Authorization": auth_header, "Content-Type": "application/json"})
 try:
     with urllib.request.urlopen(request) as response:
         pr = json.load(response)
