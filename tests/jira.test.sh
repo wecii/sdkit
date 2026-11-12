@@ -27,4 +27,12 @@ o="$(env -u MY_JIRA_TOK JIRA_BASE_URL=https://jira.example JIRA_EGRESS=allow "$J
 printf 'JIRA_API_TOKEN=tok-COMMITTED\n' > "$T/proj/.sdkit/sdkit.env"
 o="$(env -u MY_JIRA_TOK JIRA_BASE_URL=https://jira.example JIRA_EGRESS=allow "$J" fetch PRJ-7 2>&1)"; eq "token in the shared sdkit.env is refused (3)" "$?:$(printf '%s' "$o" | grep -c 'tok-COMMITTED')" "3:0"
 rm -f "$T/proj/.sdkit/sdkit.env" "$T/proj/.sdkit/sdkit.local.env"
+# Jira Cloud: search/jql on *.atlassian.net, ADF descriptions on API v3
+: > "$T/log"; JIRA_BASE_URL=https://x.atlassian.net JIRA_EGRESS=allow JIRA_TOKEN_ENV=MY_JIRA_TOK MY_JIRA_TOK=t "$ROOT/adapters.d/jira.sh" search 'labels = "x"' >/dev/null 2>&1
+eq "atlassian.net host searches search/jql"  "$(grep -c '^REQ POST search/jql ' "$T/log")" 1
+: > "$T/log"; JIRA_BASE_URL=https://jira.example JIRA_EGRESS=allow JIRA_TOKEN_ENV=MY_JIRA_TOK MY_JIRA_TOK=t "$ROOT/adapters.d/jira.sh" search 'labels = "x"' >/dev/null 2>&1
+eq "other hosts keep search"                  "$(grep -c '^REQ POST search ' "$T/log")" 1
+sed -n '/^api_desc() {/,/^}/p' "$J" > "$T/apidesc.sh"; ndesc="$(printf 'Note\n\n```sdkit-task\n{"a": 1}\n```\n')"
+eq "v3 description is ADF and reads back unchanged" "$(JIRA_API_VERSION=3 bash -c ". '$T/apidesc.sh'; api_desc \"\$1\"" _ "$ndesc" | jq -r '(.content | map(.type) | join(",")) + ":" + ([.. | .text? // empty] | join("\n") | contains("```sdkit-task") | tostring)')" "paragraph,codeBlock:true"
+eq "v2 description stays a plain string"     "$(JIRA_API_VERSION=2 bash -c ". '$T/apidesc.sh'; api_desc \"\$1\"" _ "$ndesc" | jq -r type)" string
 echo "jira: $pass passed, $failed failed"; [ "$failed" = 0 ]

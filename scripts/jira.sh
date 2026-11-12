@@ -66,6 +66,16 @@ normalise() {  # <issue json> -> task JSON + key/status; exit 4 if the contract 
   jq -nc --argjson t "$t" --argjson i "$iss" '$t + {key: $i.key, status: ($i.fields.status.name // null), statusCategory: ($i.fields.status.statusCategory.key // null)}'
 }
 block_of() { printf '%s' "$1" | jq -c '{externalId, specId, specVersion, specSha, acceptanceCriteria, risk, dependencies, scope, parent}'; }
+# api_desc <text>: the description as a JSON value for the REST body. API v2 takes the plain string; API v3 (Jira Cloud) requires Atlassian
+# Document Format: the note becomes paragraphs and the fenced ```sdkit-...``` block one codeBlock (desc_text reads it back unchanged).
+api_desc() {
+  if [ "${JIRA_API_VERSION:-2}" != 3 ]; then jq -nc --arg d "$1" '$d'; return; fi
+  local text="$1" fence='```sdkit-' note code
+  note="${text%%"$fence"*}"; code=""; [ "$note" = "$text" ] || code="${text#"$note"}"
+  jq -nc --arg n "$note" --arg c "$code" '{version: 1, type: "doc", content:
+    (([$n | split("\n")[] | select(test("\\S")) | {type: "paragraph", content: [{type: "text", text: .}]}])
+     + (if $c == "" then [] else [{type: "codeBlock", content: [{type: "text", text: ($c | rtrimstr("\n"))}]}] end))}'
+}
 desc_of() { printf '%s\n\n```sdkit-task\n%s\n```\n' "${2:-}" "$(block_of "$1" | jq .)"; }
 label_of() { printf 'sdkit-ext-%s' "$(printf '%s' "$1" | tr -c 'A-Za-z0-9_.:-' '_')"; }
 projkey() { printf '%s' "${JIRA_PROJECT:-${1%%-*}}"; }
@@ -101,10 +111,10 @@ case "$verb" in
     # (the label is re-checked here so a loose search match can never be updated by mistake)
     if [ -n "$key" ]; then
       [ "$(printf '%s' "$found" | jq '[.issues[]?] | length')" -le 1 ] || echo "jira: warning: several issues carry $lbl; updating $key" >&2
-      ad update "$key" "$(jq -nc --arg s "$summary" --arg d "$desc" '{fields: {summary: $s, description: $d}}')" >/dev/null || exit $?
+      ad update "$key" "$(jq -nc --arg s "$summary" --argjson d "$(api_desc "$desc")" '{fields: {summary: $s, description: $d}}')" >/dev/null || exit $?
       act=updated
     else
-      body="$(jq -nc --arg p "$(projkey "$parent")" --arg ty "${JIRA_SUBTASK_TYPE:-Sub-task}" --arg par "$parent" --arg s "$summary" --arg d "$desc" --arg l "$lbl" \
+      body="$(jq -nc --arg p "$(projkey "$parent")" --arg ty "${JIRA_SUBTASK_TYPE:-Sub-task}" --arg par "$parent" --arg s "$summary" --argjson d "$(api_desc "$desc")" --arg l "$lbl" \
         '{fields: {project: {key: $p}, issuetype: {name: $ty}, parent: {key: $par}, summary: $s, description: $d, labels: [$l, "sdkit"]}}')"
       r="$(ad create "$body")" || exit $?
       key="$(printf '%s' "$r" | jq -r '.key // empty' 2>/dev/null)"; [ -n "$key" ] || die "create returned no issue key" 5
@@ -124,7 +134,7 @@ case "$verb" in
     blk="$(printf '%s' "$2" | jq -c --arg k "$key" '{blocked: $k, reason, section: (.section // null), proposal: (.proposal // null), specId: (.specId // null), specSha: (.specSha // null)}')"
     summary="[spec-change] $key: $(printf '%s' "$2" | jq -r '.reason' | head -n1 | cut -c1-120)"
     desc="$(printf 'Spec change requested by sdkit while implementing %s. Implementation is blocked until the spec is revised and approved.\n\n```sdkit-change-request\n%s\n```\n' "$key" "$(printf '%s' "$blk" | jq .)")"
-    body="$(jq -nc --arg p "$(projkey "$key")" --arg ty "${JIRA_CHANGE_TYPE:-Task}" --arg s "$summary" --arg d "$desc" --arg b "sdkit-blocked-$key" \
+    body="$(jq -nc --arg p "$(projkey "$key")" --arg ty "${JIRA_CHANGE_TYPE:-Task}" --arg s "$summary" --argjson d "$(api_desc "$desc")" --arg b "sdkit-blocked-$key" \
       '{fields: {project: {key: $p}, issuetype: {name: $ty}, summary: $s, description: $d, labels: ["sdkit", "sdkit-spec-change", $b]}}')"
     r="$(ad create "$body")" || exit $?
     crk="$(printf '%s' "$r" | jq -r '.key // empty' 2>/dev/null)"; [ -n "$crk" ] || die "create returned no issue key" 5

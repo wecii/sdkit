@@ -8,7 +8,7 @@
 #   JIRA_TOKEN_ENV      NAME of the variable holding the token (default JIRA_API_TOKEN). The variable is the environment, or JIRA_API_TOKEN=... in the
 #                       personal git-ignored sdkit.local.env (scripts/jira.sh exports it); never in the committed sdkit.env
 #   JIRA_USER           if set: Basic auth user:token (Jira Cloud); else Bearer token (Data Center PAT)
-#   JIRA_API_VERSION    REST version, default 2 (description is plain text);  JIRA_SEARCH_PATH  default search
+#   JIRA_API_VERSION    REST version, default 2 (description is plain text);  JIRA_SEARCH_PATH  default search (search/jql on *.atlassian.net, where the old /search was removed)
 # The token goes to curl on stdin (-K -), never on the command line. Exit: 0 ok, 2 usage, 3 egress off / no token / 401 / 403, 5 not found or any other failure.
 set -u
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -29,10 +29,10 @@ api="${base%/}/rest/api/${JIRA_API_VERSION:-2}"
 method=GET; path=""; body=""
 case "$verb" in
   get) keyok "${1:-}" || die "bad issue key" 2; path="issue/$1?fields=summary,description,status,parent,labels,issuetype" ;;
-  search) [ -n "${1:-}" ] || die "no JQL" 2; method=POST; path="${JIRA_SEARCH_PATH:-search}"; body="$(jq -nc --arg j "$1" '{jql: $j, fields: ["summary","labels","status"], maxResults: 10}')" ;;
+  search) [ -n "${1:-}" ] || die "no JQL" 2; method=POST; path="${JIRA_SEARCH_PATH:-}"; if [ -z "$path" ]; then path=search; [[ "$base" == *.atlassian.net* ]] && path=search/jql; fi; body="$(jq -nc --arg j "$1" '{jql: $j, fields: ["summary","labels","status"], maxResults: 10}')" ;;
   create) [ -n "${1:-}" ] || die "no body" 2; method=POST; path=issue; body="$1" ;;
   update) keyok "${1:-}" || die "bad issue key" 2; method=PUT; path="issue/$1"; body="${2:-}"; [ -n "$body" ] || die "no body" 2 ;;
-  comment) keyok "${1:-}" || die "bad issue key" 2; [ -n "${2:-}" ] || die "no text" 2; method=POST; path="issue/$1/comment"; body="$(jq -nc --arg t "$2" '{body: $t}')" ;;
+  comment) keyok "${1:-}" || die "bad issue key" 2; [ -n "${2:-}" ] || die "no text" 2; method=POST; path="issue/$1/comment"; if [ "${JIRA_API_VERSION:-2}" = 3 ]; then body="$(jq -nc --arg t "$2" '{body: {version: 1, type: "doc", content: [{type: "paragraph", content: [{type: "text", text: $t}]}]}}')"; else body="$(jq -nc --arg t "$2" '{body: $t}')"; fi ;;
   transitions) keyok "${1:-}" || die "bad issue key" 2; path="issue/$1/transitions" ;;
   transition) keyok "${1:-}" || die "bad issue key" 2; [ -n "${2:-}" ] || die "no transition id" 2; method=POST; path="issue/$1/transitions"; body="$(jq -nc --arg i "$2" '{transition: {id: $i}}')" ;;
   link) [ -n "${1:-}" ] || die "no body" 2; method=POST; path=issueLink; body="$1" ;;
