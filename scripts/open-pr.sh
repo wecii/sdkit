@@ -11,14 +11,20 @@
 #   --check            (optional) preflight only: verify the host CLI/credentials are usable, list what is missing and how to set it, open nothing.
 #                      Exit 0 ready, 2 something to fill in (printed as a checklist). spec.sh publish runs it before any commit or push.
 #   --reuse            (optional) if an open PR/MR already exists for the source branch, print its URL and exit 0 instead of creating a second one.
+#   --update           (optional) update title and description of the open PR/MR of the current branch instead of creating one (all three hosts); prints its URL.
+#   --close BRANCH     (optional) close (decline) the open PR/MR whose source branch is BRANCH, with the text of <description-file> as a comment; usage:
+#                      open-pr.sh --close BRANCH "<unused title>" <note-file>. Used to close a sibling spec PR after its merge (spec.sh/merge-specs).
+#   PR_API_BASE        (Bitbucket, optional) REST base URL, default https://api.bitbucket.org/2.0; tests point it at a local server.
 # Details: the kit's docs/hosts.md.
 set -eu
-REPO_DIR=""; REUSE=0; CHECK=0
+REPO_DIR=""; REUSE=0; CHECK=0; MODE=create; CLOSE_BRANCH=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --repo-dir) REPO_DIR="${2:?--repo-dir needs a directory}"; shift 2 ;;
     --reuse) REUSE=1; shift ;;
     --check) CHECK=1; shift ;;
+    --update) MODE=update; shift ;;
+    --close) MODE=close; CLOSE_BRANCH="${2:?--close needs a branch}"; shift 2 ;;
     *) break ;;
   esac
 done
@@ -81,12 +87,15 @@ fi
 
 TITLE="${1:?title}"; DESCRIPTION_FILE="${2:?description file}"; DEST="${3:-${BASE_BRANCH:-develop}}"
 [ -r "$DESCRIPTION_FILE" ] || { echo "description file not readable: $DESCRIPTION_FILE" >&2; exit 2; }
-SOURCE="$(git rev-parse --abbrev-ref HEAD)"
-git rev-parse --verify -q "origin/$SOURCE" >/dev/null || { echo "push $SOURCE first (git push -u origin $SOURCE)"; exit 1; }
+SOURCE="$(git rev-parse --abbrev-ref HEAD)"; [ "$MODE" != close ] || SOURCE="$CLOSE_BRANCH"
+[ "$MODE" = close ] || git rev-parse --verify -q "origin/$SOURCE" >/dev/null || { echo "push $SOURCE first (git push -u origin $SOURCE)"; exit 1; }
 
 case "$PR_HOST" in
   github)
     command -v gh >/dev/null || { echo "PR_HOST=github needs the gh CLI (https://cli.github.com), then gh auth login" >&2; exit 2; }
+    if [ "$MODE" = update ]; then gh pr edit "$SOURCE" --title "$TITLE" --body-file "$DESCRIPTION_FILE" >/dev/null || exit 1
+      gh pr list --head "$SOURCE" --state open --json url --jq '.[0].url // empty'; exit 0; fi
+    if [ "$MODE" = close ]; then gh pr comment "$SOURCE" --body-file "$DESCRIPTION_FILE" >/dev/null && gh pr close "$SOURCE" >/dev/null || exit 1; echo "closed $SOURCE"; exit 0; fi
     if [ "$REUSE" = 1 ]; then
       existing="$(gh pr list --head "$SOURCE" --state open --json url --jq '.[0].url // empty')" || { echo "gh pr list failed" >&2; exit 1; }
       [ -z "$existing" ] || { echo "$existing"; exit 0; }
@@ -94,6 +103,9 @@ case "$PR_HOST" in
     exec gh pr create --base "$DEST" --head "$SOURCE" --title "$TITLE" --body-file "$DESCRIPTION_FILE" ;;
   gitlab)
     command -v glab >/dev/null || { echo "PR_HOST=gitlab needs the glab CLI (https://gitlab.com/gitlab-org/cli), then glab auth login" >&2; exit 2; }
+    if [ "$MODE" = update ]; then glab mr update "$SOURCE" --title "$TITLE" --description "$(cat "$DESCRIPTION_FILE")" >/dev/null || exit 1
+      glab mr list --source-branch "$SOURCE" --output json 2>/dev/null | jq -r '.[0].web_url // empty' 2>/dev/null; exit 0; fi
+    if [ "$MODE" = close ]; then glab mr note "$SOURCE" -m "$(cat "$DESCRIPTION_FILE")" >/dev/null && glab mr close "$SOURCE" >/dev/null || exit 1; echo "closed $SOURCE"; exit 0; fi
     if [ "$REUSE" = 1 ]; then
       existing="$(glab mr list --source-branch "$SOURCE" --output json 2>/dev/null | jq -r '.[0].web_url // empty' 2>/dev/null || true)"
       [ -z "$existing" ] || { echo "$existing"; exit 0; }
@@ -109,7 +121,7 @@ ACCOUNT_EMAIL="${BITBUCKET_EMAIL:-$(git config user.email || true)}"
 case "${BITBUCKET_TOKEN:-}" in ATCTT*) : ;; *) [ -n "$ACCOUNT_EMAIL" ] || { echo "set BITBUCKET_EMAIL or git config user.email (the Bitbucket account email)" >&2; exit 2; } ;; esac
 REMOTE="$(git remote get-url origin)"
 PR_TOKEN="${BITBUCKET_TOKEN:-}" PR_EMAIL="$ACCOUNT_EMAIL" PR_REMOTE="$REMOTE" PR_TOKEN_REMOTE="$TOKEN_REMOTE" PR_TITLE="$TITLE" PR_SOURCE="$SOURCE" \
-PR_DEST="$DEST" PR_DESC="$DESCRIPTION_FILE" PR_REUSE="$REUSE" python3 -I - <<'PY'
+PR_DEST="$DEST" PR_DESC="$DESCRIPTION_FILE" PR_REUSE="$REUSE" PR_MODE="$MODE" PR_API="${PR_API_BASE:-https://api.bitbucket.org/2.0}" python3 -I - <<'PY'
 import base64, json, os, re, urllib.error, urllib.request
 remote = os.environ["PR_REMOTE"]
 creds = re.match(r"https://([^@/]+:[^@/]+)@bitbucket\.org/", os.environ["PR_TOKEN_REMOTE"])
@@ -132,10 +144,38 @@ body = {
     "close_source_branch": True,
     "description": open(os.environ["PR_DESC"]).read(),
 }
+api = os.environ["PR_API"].rstrip("/")
+mode = os.environ.get("PR_MODE", "create")
+if mode in ("update", "close"):
+    import urllib.parse
+    q = urllib.parse.quote(f'source.branch.name="{os.environ["PR_SOURCE"]}" AND state="OPEN"')
+    try:
+        with urllib.request.urlopen(urllib.request.Request(f"{api}/repositories/{repo}/pullrequests?q={q}", headers={"Authorization": auth_header})) as response:
+            found = json.load(response).get("values") or []
+    except urllib.error.HTTPError as err:
+        raise SystemExit(f"HTTP {err.code} while looking for the PR: {err.read().decode()[:300]}")
+    if not found:
+        raise SystemExit(f"no open PR for branch {os.environ['PR_SOURCE']}")
+    pr_id, href = found[0]["id"], found[0]["links"]["html"]["href"]
+    def send(method, path, payload):
+        req = urllib.request.Request(f"{api}/repositories/{repo}/pullrequests/{pr_id}{path}", data=json.dumps(payload).encode(), method=method,
+                                     headers={"Authorization": auth_header, "Content-Type": "application/json"})
+        try:
+            urllib.request.urlopen(req).read()
+        except urllib.error.HTTPError as err:
+            raise SystemExit(f"HTTP {err.code}: {err.read().decode()[:300]}")
+    if mode == "update":
+        send("PUT", "", {"title": body["title"], "description": body["description"]})
+        print(href)
+    else:
+        send("POST", "/comments", {"content": {"raw": body["description"]}})
+        send("POST", "/decline", {})
+        print(f"closed {os.environ['PR_SOURCE']}: {href}")
+    raise SystemExit(0)
 if os.environ.get("PR_REUSE") == "1":
     import urllib.parse
     q = urllib.parse.quote(f'source.branch.name="{os.environ["PR_SOURCE"]}" AND state="OPEN"')
-    lookup = urllib.request.Request(f"https://api.bitbucket.org/2.0/repositories/{repo}/pullrequests?q={q}", headers={"Authorization": auth_header})
+    lookup = urllib.request.Request(f"{api}/repositories/{repo}/pullrequests?q={q}", headers={"Authorization": auth_header})
     try:
         with urllib.request.urlopen(lookup) as response:
             found = json.load(response).get("values") or []
@@ -144,7 +184,7 @@ if os.environ.get("PR_REUSE") == "1":
     except urllib.error.HTTPError as err:
         raise SystemExit(f"HTTP {err.code} while looking for an existing PR: {err.read().decode()[:300]}")
 request = urllib.request.Request(
-    f"https://api.bitbucket.org/2.0/repositories/{repo}/pullrequests", data=json.dumps(body).encode(), method="POST",
+    f"{api}/repositories/{repo}/pullrequests", data=json.dumps(body).encode(), method="POST",
     headers={"Authorization": auth_header, "Content-Type": "application/json"})
 try:
     with urllib.request.urlopen(request) as response:

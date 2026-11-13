@@ -51,4 +51,9 @@ eq "the Jira user is recorded as who" "$(tail -1 specs/s2/acceptances.jsonl | jq
 eq "an edited finding is not covered by the acceptance (rc 2)" "$(rc "$RV" record s2 --verdict PASS --isolation fresh --findings "$T/acc2.json")" 2
 check "the unedited finding is accepted" "$RV" record s2 --verdict PASS --isolation fresh --findings "$T/acc.json"
 check "check passes with the accepted blocker" "$RV" check s2
+echo "changes/ is outside the base hash"
+h0="$("$RV" hash s1)"; mkdir -p specs/s1/changes/c1; echo d > specs/s1/changes/c1/intent.md
+eq "adding a change leaves the base hash alone" "$("$RV" hash s1)" "$h0"
+hc="$("$RV" hash s1--c1 --target specs/s1/changes/c1)"; echo e >> specs/s1/changes/c1/intent.md
+nocheck "a change has its own hash" test "$("$RV" hash s1--c1 --target specs/s1/changes/c1)" = "$hc"
 finish review.test

@@ -3,7 +3,7 @@
 # run-role.sh); this script only keeps the evidence honest. Contract: docs/design-role-aware.md, section "Review adapter".
 #   review.sh plan <artifact> [--json]      print the resolved rubric: reviewers, standards (reviewer=standard), context files. Source: <project-dir>/review.d/<artifact>.env,
 #                                           else the kit's templates/review.d/<artifact>.env (shipped: prd, adr, feature-spec). Keys: REVIEWERS, STANDARDS, CONTEXT.
-#   review.sh hash <id> [--target P]        the contentHash of the document (sha256 over the sorted files: sha256 + relative path each). Excludes spec.meta.json and acceptances.jsonl
+#   review.sh hash <id> [--target P]        the contentHash of the document (sha256 over the sorted files: sha256 + relative path each). Excludes spec.meta.json, change.json (machine state of a change), acceptances.jsonl and the top-level changes/ directory (a base's hash covers base files only; a change is hashed on its own with --target specs/<id>/changes/<slug>)
 #   review.sh begin <id> [--target P] [--final]
 #                                           open a review round: remember the contentHash, count the round. Past SPEC_REVIEW_MAX_ROUNDS (default 4) it refuses (exit 3): no
 #                                           unbounded retry, a person decides (raise the setting or change the document's approach). `--final` opens ONE verification
@@ -56,7 +56,7 @@ target_path() {
 # content_hash <target>
 content_hash() {
   local t="$1" d f list
-  if [ -d "$t" ]; then d="$t"; list="$(cd "$d" && find . -type f ! -name spec.meta.json ! -name acceptances.jsonl ! -name .DS_Store | LC_ALL=C sort)"
+  if [ -d "$t" ]; then d="$t"; list="$(cd "$d" && find . -type f ! -path './changes/*' ! -name spec.meta.json ! -name change.json ! -name acceptances.jsonl ! -name .DS_Store | LC_ALL=C sort)"
   else d="$(dirname "$t")"; list="./$(basename "$t")"; fi
   [ -n "$list" ] || { echo "review: $t has no files to hash" >&2; return 1; }
   while IFS= read -r f; do printf '%s  %s\n' "$(cd "$d" && sdkit_sha256 < "$f")" "$f"; done <<EOF | sdkit_sha256

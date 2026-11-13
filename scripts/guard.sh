@@ -52,11 +52,32 @@ case "${1:-}" in
     ;;
   pre-push)
     sdd_gate push
+    refs="$(cat)"   # <local ref> <local sha> <remote ref> <remote sha> per pushed ref
     if [ -n "${PROTECTED_BRANCHES:-}" ] && [ "${ALLOW_PROTECTED_PUSH:-0}" != 1 ]; then
       while read -r _ _ remote_ref _; do
         b="${remote_ref#refs/heads/}"
         matches_glob_list "$b" "$PROTECTED_BRANCHES" && bad "push to protected branch '$b' needs approval. Re-run with ALLOW_PROTECTED_PUSH=1."
-      done
+      done <<< "$refs"
+    fi
+    # Spec merge gate (c), off unless SPEC_CHECK_ON_PUSH=1: pushing a spec's BASE branch (spec/<id>) or the base branch itself runs `spec.sh check <id>` for each spec
+    # whose meta changed, so a spec with unmerged siblings or an unapplied change is not pushed from here. A push of a change branch (spec/<id>--<slug>) is never checked:
+    # that is how a change goes to review. Only the checked-out commit can be checked. A merge made in the host UI is not covered (gates d and e are).
+    if [ "${SPEC_CHECK_ON_PUSH:-}" = 1 ] && [ -x "$(dirname "$0")/spec.sh" ]; then
+      sb="${BASE_BRANCH:-main}"; head_sha="$(git rev-parse -q --verify HEAD 2>/dev/null || true)"
+      while read -r _ lsha rref rsha; do
+        [ -n "$lsha" ] && [ "$lsha" = "$head_sha" ] || continue
+        b="${rref#refs/heads/}"; ids=""
+        case "$b" in
+          spec/*--*) continue ;;
+          spec/*) ids="${b#spec/}" ;;
+          "$sb") from="$rsha"; case "$from" in *[!0]*) ;; *) from="$(git merge-base "origin/$sb" "$lsha" 2>/dev/null || true)" ;; esac
+                 [ -n "$from" ] && ids="$(git diff --name-only "$from" "$lsha" -- "${SPECS_DIR:-specs}" 2>/dev/null | sed -n -E "s#^${SPECS_DIR:-specs}/([^/]+)/spec\.meta\.json\$#\1#p" | sort -u)" ;;
+          *) continue ;;
+        esac
+        for sid in $ids; do
+          out="$("$(dirname "$0")/spec.sh" check "$sid" 2>&1)" || { printf '%s\n' "$out" >&2; bad "spec '$sid' is not mergeable yet (spec.sh check). Fix it, or unset SPEC_CHECK_ON_PUSH for this push."; }
+        done
+      done <<< "$refs"
     fi
     if [ "$fail" = 0 ] && [ "${GUARD_SKIP_VERIFY:-0}" != 1 ]; then
       v="${VERIFY_CMD:-}"
