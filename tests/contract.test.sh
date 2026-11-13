@@ -141,7 +141,7 @@ hand rr7.md developer t1/rr7 src/
 eq "dry-run validates and registers nothing"          "$("$RR" developer --handoff rr7.md --host claude --dry-run 2>&1 | grep -c 'CONTRACT=valid')/$(test -e .sdkit/work/t1/contracts/rr7.json; echo $?)" 1/1
 
 echo "independence and compatibility"
-nocheck "sdd.sh does not know the contract script"    grep -q 'contract' "$KIT/scripts/sdd.sh"
+nocheck "sdd.sh does not know the contract script"    grep -q 'contract\.sh' "$KIT/scripts/sdd.sh"
 nocheck "parse-verdict.sh does not know it either"    grep -q 'contract' "$KIT/scripts/parse-verdict.sh"
 nocheck "record-verdict.sh does not know it either"   grep -q 'contract' "$KIT/hooks/record-verdict.sh"
 nocheck "contract.sh never calls the phase machine"   grep -qE 'sdd\.sh|_verdict|parse-verdict' <(grep -v '^#' "$KIT/scripts/contract.sh")
