@@ -296,7 +296,7 @@ More in [docs/developer-workflow.md](docs/developer-workflow.md) §7 and the one
 
 Your session is the *orchestrator*. It hands narrow jobs to *roles*, each run as a fresh agent. Roles declare a cost tier, never a model name. The `orchestrator` is not an agent file: it is your own session, playing the role defined in `core/roles/orchestrator.md`.
 
-Seven skills and eleven roles ship in this version.
+Eight skills and eleven roles ship in this version.
 
 ### Roles
 
@@ -316,7 +316,8 @@ Seven skills and eleven roles ship in this version.
 |---|---|
 | `spec-driven-dev` | Run a task through the whole workflow above (the driver; it calls the OpenSpec skills) |
 | `generate-specs` | Analyst: turn a pre-spec into reviewed specs, an OpenSpec change and one PR |
-| `update-specs` | Analyst: change a published spec after edits or Tech Lead change requests |
+| `update-specs` | Analyst: change a published spec after edits or Tech Lead change requests (after approval: write a change under `specs/<id>/changes/`) |
+| `merge-specs` | Analyst: merge sibling spec changes into the next revision (semantic merge, a person decides conflicts) |
 | `generate-tasks` | Analyst: split an approved spec into Jira subtasks |
 | `incident-to-rule` | Turn a resolved bug or incident into a lasting guard |
 | `scaffold-init`, `scaffold-doctor` | Set a repo up, and check that the setup is complete |

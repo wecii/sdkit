@@ -56,6 +56,7 @@ tests/pricing.test.sh                                             # price table:
 tests/usage.test.sh                                               # F07: usage/cost accounting, price resolution, deduplication, coverage warnings
 tests/efficiency.test.sh                                           # F08: verdict normalisation, format/semantic split, PASS without evidence, early DoD check
 tests/context.test.sh                                              # F09: bounded output, ENVELOPE/1, error lines preserved
+tests/spec-change.test.sh && tests/spec-merge.test.sh                  # spec changes: AC parsing and hashes, change.json, apply/merge, drift/check, open-pr update/close, gate (c)
 tests/selection.test.sh                                            # F10: changed file → test mapping, pipe failure, cache
 tests/costbase.test.sh                                             # F11: fixed-data baseline and comparison guards
 tests/adapter.test.sh                                              # F12: adapter contract, fake external adapter
@@ -124,7 +125,7 @@ A guard is not trusted until it has been seen to "fail and then pass": try both 
 
 ## Versioning and release
 
-1. Make the change. If you changed roles in `core/roles/`, run `bin/build-adapters.sh` and commit the generated files too. Update the related tables in `docs/guide.md` and the README (including part counts: number of skills/roles/hooks/scripts; currently 4 skills, 10 roles, 19 hooks, 33 scripts).
+1. Make the change. If you changed roles in `core/roles/`, run `bin/build-adapters.sh` and commit the generated files too. Update the related tables in `docs/guide.md` and the README (including part counts: number of skills/roles/hooks/scripts; currently 8 skills, 11 roles, 19 hooks, 40 scripts).
 2. Bump the version in `.claude-plugin/plugin.json` **and** `.claude-plugin/marketplace.json` together (both must match), and in the version badge at the top of `README.md`.
    - patch: fix, docs
    - minor: new skill/agent/hook/setting (off by default)

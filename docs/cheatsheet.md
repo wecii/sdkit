@@ -11,7 +11,8 @@ For details see [guide.md](guide.md).
                                             # on Codex invoke it as: $spec-driven-dev
 /scaffold-doctor                            # is the install sound?
 /generate-specs <pre-spec>                  # analyst env: pre-spec -> reviewed spec PR
-/update-specs <id>                          # analyst env: change an approved spec (or answer a change request)
+/update-specs <id>                          # analyst env: change a spec (after approval: a change under specs/<id>/changes/), or answer a change request
+/merge-specs <id>                           # analyst env: merge sibling changes into the next revision
 /generate-tasks <id> --sha <SHA>            # analyst env: approved spec -> Jira subtasks
 /spec-driven-dev <JIRA-KEY>                 # developer env (SDD_MANAGED=on): the task comes from Jira
 sdkit init --env analyst|developer          # pick the environment (default standalone); sdkit prespec check <name>

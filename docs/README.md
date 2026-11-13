@@ -33,6 +33,7 @@ Pick where to start by your role.
 | [audit-architecture.md](audit-architecture.md) | Architecture and capability audit (F00): component map, capability inventory, lifecycles, findings, prioritized list, proposed ADRs |
 | [design-routing.md](design-routing.md) | Smart orchestration (F06): decision engine, model registry, execution contract, retry/escalation, budget (hard/advisory), routing matrix, trust boundaries |
 | [design-usage.md](design-usage.md) | Usage and cost accounting (F07): root causes, ledger schema v2, deduplication, price resolution, report, before/after, limits |
+| [design-spec-merge.md](design-spec-merge.md) | Parallel spec changes: one living base, per-change deltas, apply and semantic `merge-specs`, gates, verification |
 | [role-aware.md](role-aware.md) | Role-aware environments: analyst and developer flows, usage, Jira task contract, change requests, EGM, limits, open decisions |
 | [design-role-aware.md](design-role-aware.md) | Design contract of the role-aware work packages |
 | [design-adapters.md](design-adapters.md) | Execution adapter contract (F12) and optional LiteLLM (F13) |

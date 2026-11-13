@@ -43,7 +43,7 @@ Two extra principles: **tokens are neither wasted nor starved** (section 18), an
 
 | Part | Count | What it does |
 |---|---|---|
-| **Skill** | 7 | Instruction sets that run the task: `spec-driven-dev` (main flow, loaded progressively via `references/`), `incident-to-rule`, `scaffold-init`, `scaffold-doctor`, and the role-aware trio `generate-specs`, `update-specs`, `generate-tasks` ([role-aware.md](role-aware.md)) |
+| **Skill** | 8 | Instruction sets that run the task: `spec-driven-dev` (main flow, loaded progressively via `references/`), `incident-to-rule`, `scaffold-init`, `scaffold-doctor`, and the role-aware set `generate-specs`, `update-specs`, `merge-specs`, `generate-tasks` ([role-aware.md](role-aware.md)) |
 | **Role** | 11 | Tool-independent definitions under `core/roles/`: `orchestrator`, `analyst`, `scout`, `engineer`, `developer`, `test-writer`, `devsecops`, `reviewer`, `security-auditor`, `spec-reviewer`, `verifier`. Ten are generated as subagents; `verifier`'s strong-tier twin `verifier-deep` (via `deep: strong`) is generated too, so **11 role files** per host |
 | **Hook** | 19 + 1 | 19 checks that run automatically during tool steps and session boundaries in Claude Code (including `guard-readonly`, `usage-log`, `guard-budget`, `guard-noisy`, `result-size`, `check-contract`, `value-report`) and the `adapt.sh` shim through which other hosts call the same hooks. Where there are no hooks, git hooks enforce most of the same rules |
 | **Verification engine** | 1 core + steps per stack | `scripts/verify-core.sh` (diff base, changed files, `verify.d`, green-result cache) + `stacks/<stack>/scripts/steps.sh` (the stack's own checks) |
@@ -267,7 +267,8 @@ close off writing files via `Bash`). Non-Claude tools and a direct `git push` ar
 | `scaffold-init` | When setting up a new repo, **once** | Asks which hosts (Claude/Codex/OpenCode/Cursor/Gemini), runs `init.sh --host ...`, starts `openspec init`, helps fill in `project.md`, runs doctor at the end |
 | `scaffold-doctor` | After install, or if something seems not to work | Runs `doctor.sh` and says what to change where for every `FAIL` |
 | `generate-specs` | Analyst environment (`SDKIT_ENV=analyst`) | Turns pre-specs into reviewed specs, output as an OpenSpec change (`proposal.md`, `design.md`, `tasks.md`, `specs/`) via `openspec-propose` in `specs/<id>/`, reviewed until `SPEC_REVIEW_MAX_ROUNDS`, then a PR; prose in `ANALYST_LANGUAGE` (default `tr`) ([role-aware.md](role-aware.md)) |
-| `update-specs` | Analyst environment | Changes an approved spec (including a spec-change request from a developer) and bumps its version |
+| `update-specs` | Analyst environment | Changes a published spec (including a spec-change request from a developer). Before approval it edits in place and bumps 0.N; after approval it writes a **change** under `specs/<id>/changes/<slug>/` (branch `spec/<id>--<slug>`, label base +0.1) |
+| `merge-specs` | Analyst environment | Merges sibling changes (same base) into the next revision: `spec.sh apply` facts, a fresh-subagent judgement and sweep, at most 4 decisions per round, `apply`, EGM review, publish; design in [design-spec-merge.md](design-spec-merge.md) |
 | `generate-tasks` | Analyst environment | Splits an approved spec into Jira subtasks that follow the task contract, or answers a change request |
 
 ### incident-to-rule
@@ -517,7 +518,7 @@ Credentials: email from `BITBUCKET_EMAIL`, otherwise `git config user.email`; pa
 
 ### `scripts/guard.sh`
 Tool-independent guards; called from the git hooks (`adapters/git/pre-commit`, `pre-push`). `pre-commit`: `SECRET_GLOBS` matches in staged files, tests listed in `<project-dir>/.frozen`
-(**rejects**), anything under `PROTECTED_PATHS` (rejects; after approval `ALLOW_PROTECTED=1`). `pre-push`: push to `PROTECTED_BRANCHES` (rejects; `ALLOW_PROTECTED_PUSH=1`),
+(**rejects**), anything under `PROTECTED_PATHS` (rejects; after approval `ALLOW_PROTECTED=1`). `pre-push`: push to `PROTECTED_BRANCHES` (rejects; `ALLOW_PROTECTED_PUSH=1`), `SPEC_CHECK_ON_PUSH=1` runs `spec.sh check` for a spec's base branch,
 and rejects the push if `verify.sh --fast --since-head` is red (`GUARD_SKIP_VERIFY=1` skips it deliberately). The "ask" in the Claude hooks is "reject + approval flag" here, because a git hook cannot ask a question.
 
 ### `scripts/plan-waves.sh <tasks.md>`
@@ -606,7 +607,8 @@ Generates `agents/*.md` (Claude) and `adapters/{codex,opencode,cursor,gemini}/` 
 
 ### Role-aware scripts (`SDKIT_ENV=analyst|developer`)
 Details, flows and limits: [role-aware.md](role-aware.md).
-- `scripts/spec.sh`: spec lifecycle in the specs repo (`init-meta`, `status`, `branch`, `publish`, `promote`, `approved-sha`; versions 0.1, 0.N, 1.0). Pre-spec content (`PRESPEC_DIR`) is never committed. `open-pr.sh` also serves it.
+- `scripts/spec.sh`: spec lifecycle in the specs repo (`init-meta`, `status`, `branch`, `publish`, `promote`, `approved-sha`; versions 0.1, 0.N, 1.0) and spec changes (`change new|refresh|status`, `drift`, `check`, `apply`; [design-spec-merge.md](design-spec-merge.md)). Pre-spec content (`PRESPEC_DIR`) is never committed. `open-pr.sh` also serves it (create, `--update`, `--close` on GitHub, GitLab and Bitbucket).
+- `scripts/spec-change.sh` / `scripts/spec-apply.sh`: the deterministic parts of a spec change. The first reads (AC parsing and hashes, `expects`/`touches`, `moved`, `overlap`, `plan`, `coverage`, `validate`; never writes), the second writes (`renumber`, `delta`). No model.
 - `scripts/review.sh`: evidence for the spec review (`plan`, `begin`, `record`, `check`, `accept`) with the `spec-reviewer` role and `review.d/*.env` checklists; stops after `SPEC_REVIEW_MAX_ROUNDS` rounds; the open findings are then walked one by one with the user, and `begin --final` opens one verification round outside the cap. `accept` records `JIRA_USER`.
 - `scripts/tasks.sh`: deterministic core of `generate-tasks`: AC-to-task trace, dependency cycles, stable ids, Jira description render, report (`templates/change-request.md` for change requests).
 - `scripts/jira.sh` + `adapters.d/jira.sh`: the Jira task contract (`validate-task`, `fetch`, `deps-ready`, `upsert`, `comment`, `transition`, `change-request`). Network only with `JIRA_EGRESS=allow` (personal) and a token read from the variable named in `JIRA_TOKEN_ENV`.
@@ -651,6 +653,7 @@ Details, flows and limits: [role-aware.md](role-aware.md).
 | `RELEASE_BRANCH_PREFIX` | `release/` | Release branch prefix |
 | `FREEZE_TAG_PREFIX` | `freeze/` | Freeze tag prefix |
 | `PROTECTED_BRANCHES` | empty | Env branches where a direct push needs approval |
+| `SPEC_CHECK_ON_PUSH` | empty | `1` = the pre-push git hook runs `spec.sh check <id>` when a spec's base branch (`spec/<id>`) or the base branch is pushed (a change branch is never checked) |
 | `SERVICES_DIR` | `services` | Directory the example OpenAPI policy looks at |
 | `SHARED_MODULE` | empty | Shared Go module whose dependents are also built when it changes |
 | `DEPENDENT_MODULES_GLOB` | empty | Glob of the dependent modules (`services/*`) |
@@ -809,7 +812,7 @@ spec-driven-kit/
 │   ├── tiers.env          tier -> model mapping (Claude, Codex, OpenCode, Cursor, Gemini)
 │   ├── hosts.env          host tool/permission names (read-only shell allow-list, Gemini tools, OpenCode key)
 │   └── rules/             general, git, test-first, token-economy     (language-independent)
-├── skills/                spec-driven-dev (+ references/), incident-to-rule, scaffold-init, scaffold-doctor, generate-specs, update-specs, generate-tasks
+├── skills/                spec-driven-dev (+ references/), incident-to-rule, scaffold-init, scaffold-doctor, generate-specs, update-specs, merge-specs, generate-tasks
 ├── agents/                GENERATED Claude agents (including verifier-deep; from core/roles; do not edit by hand)
 ├── adapters/
 │   ├── codex/ opencode/   GENERATED role files (+ config.toml.snippet; OpenCode guard plugin plugins/)
@@ -818,7 +821,7 @@ spec-driven-kit/
 ├── hooks/                 hooks.json (event wiring) + lib.sh + 19 hooks + adapt.sh (Gemini/Cursor shim)
 ├── scripts/               env (settings reader, lock, active task), sdd, resolve-base, open-pr, guard, plan-waves, worktree, state, parse-verdict, check-plan-parity,
 │                          check-writes, usage, telemetry, contract, workflow, route, memory, lookup-cache, run-role, verify-core, verify-lib,
-│                          spec, tasks, review, jira   (role-aware; stack-independent)
+│                          spec, spec-change, spec-apply, tasks, review, jira   (role-aware; stack-independent)
 ├── adapters.d/            execution adapters: litellm.sh, jira.sh (task-contract adapter)
 ├── bench/                 run.sh (benchmark driver), scenarios/ (4 F01 + 5 contract scenarios), stub-host/ (fake host CLIs for simulated mode); see design-telemetry.md, design-contracts.md
 ├── stacks/

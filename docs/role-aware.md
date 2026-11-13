@@ -17,7 +17,7 @@ Two experiences on top of the same kit, chosen once with `sdkit init --env analy
 3. `spec.sh publish` needs a fresh PASS bound to the document's current content hash, commits on `spec/<id>`, pushes (never force) and opens or updates one PR. A review PASS is not approval.
 4. The Tech Lead approves by merging; the last commit of the approval PR sets version 1.0 and status approved (`spec.sh promote`).
 5. `/generate-tasks <id> --sha <SHA>` (only for an approved SHA reachable from the base branch) traces every acceptance criterion to a task, rejects cycles, and creates or updates Jira subtasks idempotently by `externalId`. It never assigns anyone.
-6. `/update-specs <id>` changes an existing spec, or answers a change request (below).
+6. `/update-specs <id>` changes an existing spec, or answers a change request (below). After approval every change is a delta under `specs/<id>/changes/<slug>/` on branch `spec/<id>--<slug>`; changes on the same base are siblings, and `/merge-specs <id>` merges them into the next revision (design: [design-spec-merge.md](design-spec-merge.md)). `spec.sh check <id>` is the one command the Tech Lead runs before merging; `generate-tasks` refuses a revision with unmerged siblings and creates only the tasks of the changes in it.
 
 ## Developer flow
 
