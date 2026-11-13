@@ -11,6 +11,8 @@ Drives the analyst from a pre-spec to a reviewed spec PR whose content is an Ope
 
 **Two rules that never bend.** (1) PASS from the review is not approval: the Tech Lead approves by merging the PR; you never approve, merge or push to `main`. (2) The pre-spec directory (`PRESPEC_DIR`) is input only; nothing from it is committed or pasted verbatim into a published file without the analyst having seen it.
 
+**One base per spec.** `generate-specs` writes the FIRST base `specs/<id>/` only. When `specs/<id>` already exists and is approved, a feature or fix on it is not a new id: stop and hand over to `update-specs`, which writes it as a change (`specs/<id>/changes/<slug>/`).
+
 ## Language
 
 Everything written for people (questions to the analyst, the documents, the PR body, the final report) is in `ANALYST_LANGUAGE` (`sdkit.env`, default `tr` = Turkish; `sdkit.local.env` wins). Machine-read parts stay English: step banners, AC ids, review verdicts and severities, file names, OpenSpec section keywords (`## Why`, `## What Changes`, `### Requirement:`, `#### Scenario:`, `WHEN`/`THEN`). Pass the language to the generator and to the reviewers.
