@@ -130,6 +130,42 @@ sdkit init --env developer  # source repo.  then: /spec-driven-dev PROJ-123
 
 Flows, limits and open decisions: [docs/role-aware.md](docs/role-aware.md).
 
+### What to fill in, per role
+
+`sdkit init --env ...` writes both files with every key and its default; you only fill in what is empty. **Shared** settings go in `.sdkit/sdkit.env` (committed, set once by whoever sets the repo up). **Personal and secret** ones (tokens, your account) go in `.sdkit/sdkit.local.env` (git-ignored, wins over the shared file). Tokens never go in `sdkit.env`; `jira.sh` refuses that. `sdkit doctor` lists what is still missing.
+
+**Analyst** (specs repo, `sdkit init --env analyst`)
+
+| Where | Key | Fill in |
+|---|---|---|
+| `.sdkit/sdkit.env` (team) | `BASE_BRANCH` | the branch spec PRs target and the Tech Lead merges into (`main`) |
+| | `PR_HOST` | `bitbucket` (or `github`, `gitlab`; `auto` reads the origin URL) |
+| | `TRACKER=jira`, `JIRA_BASE_URL`, `JIRA_PROJECT` | your Jira site and project key (`generate-tasks` creates the subtasks there) |
+| | `JIRA_SUBTASK_TYPE`, `JIRA_CHANGE_TYPE`, `JIRA_LINK_TYPE` | your Jira issue and link type names, if they differ from the defaults |
+| | `ANALYST_LANGUAGE`, `SPEC_REVIEW_MAX_ROUNDS`, `PRESPEC_DIR` | language of the specs (`tr`), review rounds before a person decides (`4`), the pre-spec folder (`prespec`) |
+| | `SPEC_CHECK_ON_PUSH=1` | optional: the pre-push hook runs `spec.sh check` for a spec's base branch |
+| `.sdkit/sdkit.local.env` (you) | `BITBUCKET_EMAIL`, `BITBUCKET_TOKEN` | your Bitbucket account e-mail and an API token (repository + pull request write). An `ATCTT...` access token is sent as Bearer and needs no e-mail. Alternatively an origin URL that embeds the credentials, or `PR_TOKEN_REPO` |
+| | `JIRA_EGRESS=allow`, `JIRA_API_TOKEN`, `JIRA_USER` | allow Jira calls from this machine, your Jira token, your Jira account (Cloud: your e-mail). `JIRA_USER` is also the name recorded when you accept a review finding or decide in `merge-specs`, so set it before |
+| | `ANALYST_LANGUAGE` | only to override the team language for yourself |
+| `.sdkit/project.md` | risk rubric | the labels `generate-tasks` puts on each subtask (it never invents a risk) |
+| `prespec/` (git-ignored) | raw input | the pre-spec you give to `/generate-specs`; never committed |
+
+**Developer** (source repo, `sdkit init --env developer`)
+
+| Where | Key | Fill in |
+|---|---|---|
+| once per repo | `git submodule add <specs-repo-url> specs` | the approved specs, read-only (`SPEC_REPO` in `sdkit.env` is a hint for the URL). Keep it at the revision your tasks pin or newer |
+| `.sdkit/sdkit.env` (team) | `SDD_MANAGED=on`, `SPECS_DIR`, `TRACKER=jira` | set by `init`; change `SPECS_DIR` only if the submodule is elsewhere |
+| | `JIRA_BASE_URL`, `JIRA_PROJECT` | the same Jira site and project as the analysts |
+| | `JIRA_BLOCKED_STATUS`, `JIRA_REVIEW_STATUS`, `JIRA_CHANGE_TYPE`, `JIRA_LINK_TYPE` | your workflow's status and type names (defaults `Blocked`, `In Review`), used when a spec-change request blocks a task and when evidence is synced |
+| | `PR_HOST`, `BASE_BRANCH` | where the code PR goes |
+| `.sdkit/sdkit.local.env` (you) | `JIRA_EGRESS=allow`, `JIRA_API_TOKEN`, `JIRA_USER` | as for the analyst: the task, its dependencies and the evidence come from and go to Jira |
+| | `BITBUCKET_EMAIL`, `BITBUCKET_TOKEN` | to open the code PR on Bitbucket (`gh` / `glab` login for GitHub / GitLab) |
+| | `RUN_ROLE_HOST`, `VERIFIER_HOST` | only to run roles as separate processes or the verifier on another vendor |
+| `.sdkit/project.md`, `verify.d/` | risk rubric, verify policies | **mandatory rubric**; the workflow does not start without it |
+
+Tech Lead: no file to fill in. Review the spec PR, run `spec.sh check <id>` before merging a revision that had changes, and merge: the merge is the approval. Hosts and credentials in detail: [docs/hosts.md](docs/hosts.md); the Jira keys: [docs/guide.md](docs/guide.md) §10.
+
 ---
 
 ## 🔄 How It Works
