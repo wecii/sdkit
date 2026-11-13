@@ -257,6 +257,7 @@ cmd_advance() {
       enforce_floor "$risk"
       [ -f "$PROJECT_DIR/$(get .proposal)" ] || reject no-artifact "proposal not found: $(get .proposal) (it was there at 'proposed')"
       [ "$mg" = 1 ] && { m_sha "$(get .specSha)" || reject missing-artifact "$M_WHY"; }
+      [ "$mg" = 1 ] && m_stale "$(get .specSha)" "$(get .specId)" "$(jq -r '.acceptanceCriteria[]?' "$STATE")" && reject inconsistent "$M_WHY"
       wf_gate verified "$profile"
       local fp; fp="$(fingerprint)" || reject no-fingerprint "cannot fingerprint the diff (see the message above)"
       if ! needs_verifier "$risk" "$profile"; then
@@ -570,6 +571,7 @@ cmd_gate() {
           echo "Phase 'proposed' is test-first: only test files may change. Write the failing test, then run 'sdd.sh advance red --test-cmd <cmd>'. '$rel' is not a test file (SDD_TEST_GLOBS)."; exit 1 ;;
       esac ;;
     push)
+      [ "$(get .managed)" = true ] && [ -z "$(get .blocked.kind)" ] && m_stale "$(get .specSha)" "$(get .specId)" "$(jq -r '.acceptanceCriteria[]?' "$STATE")" && { echo "$M_WHY"; exit 1; }
       [ -n "$phase" ] && [ -n "$(get .blocked.kind)" ] && { echo "Task '$(get .task)' is blocked by a $(get .blocked.kind) request ($(get .blocked.ref)): no push or PR until sdd.sh revalidate --sha <new approved revision>."; exit 1; }
       case "$phase" in
         "") echo "Pushing or opening a PR outside a spec-driven task. Start one with the spec-driven-dev skill."; exit 1 ;;
@@ -685,6 +687,25 @@ m_sha() {
   head="$(git -C "$d" rev-parse -q --verify HEAD)" || { M_WHY="$SPECS/ has no checked-out HEAD"; return 1; }
   git -C "$d" merge-base --is-ancestor "$1" "$head" 2>/dev/null || { M_WHY="$SPECS/ is checked out at ${head:0:12}, which does not contain the pinned specSha ${1:0:12}: update the submodule (git -C $SPECS checkout $1, then commit the pointer)"; return 1; }
 }
+# m_stale <specSha> <specId> <ac list, one per line>: gate (e), "the code is going to be merged, so the spec must be too". 0 + M_WHY when the specs checkout holds a LATER
+# approved revision of the same spec whose applied changes touch an AC of the task (M_WHY names the AC and the change that introduced it); 1 otherwise (also on any git
+# problem: this gate only blocks on a deliberate finding, never on its own error). The way out is the existing path: block --spec-change, then revalidate --sha.
+m_stale() {
+  local d="$PROJECT_DIR/$SPECS" sp head hm pv hv ch c touched hit="" ac
+  sp="${TASKS_SPEC_PATH:-specs}/$2"; head="$(git -C "$d" rev-parse -q --verify HEAD 2>/dev/null)" || return 1
+  [ "$head" != "$1" ] && git -C "$d" merge-base --is-ancestor "$1" "$head" 2>/dev/null || return 1
+  hm="$(git -C "$d" show "$head:$sp/spec.meta.json" 2>/dev/null)" || return 1
+  [ "$(printf '%s' "$hm" | jq -r '.status // empty' 2>/dev/null)" = approved ] || return 1
+  hv="$(printf '%s' "$hm" | jq -r '.version // empty')"; pv="$(git -C "$d" show "$1:$sp/spec.meta.json" 2>/dev/null | jq -r '.version // empty' 2>/dev/null)"
+  [ -n "$hv" ] && [ "$hv" != "$pv" ] || return 1
+  for ch in $(git -C "$d" ls-tree -r --name-only "$head" -- "$sp/changes" 2>/dev/null | grep '/change\.json$'); do
+    c="$(git -C "$d" show "$head:$ch" 2>/dev/null)" || continue
+    touched="$(printf '%s' "$c" | jq -r --arg v "$hv" 'select(.status == "applied" and .applied.version == $v) | .touches[]?' 2>/dev/null)"
+    for ac in $3; do printf '%s\n' "$touched" | grep -qxF "$ac" && hit="$hit $ac (change $(printf '%s' "$c" | jq -r .slug))"; done
+  done
+  [ -n "$hit" ] || return 1
+  M_WHY="the task is pinned to ${1:0:12}, but the approved revision v$hv of $2 in $SPECS/ changes:$hit. The code would be merged against a spec that has moved: run sdd.sh block --spec-change --reason \"spec $2 v$hv changes$hit\", then sdd.sh revalidate --sha <the approved revision> once the task is re-pinned"
+}
 # m_merged: the PR head recorded at `advance pr` (and the branch's tip, when it is still here) is in the resolved base. 1 + M_WHY otherwise.
 m_merged() {
   local base head br tip; head="$(get .prHead)"; br="$(get .prBranch)"
@@ -737,6 +758,7 @@ cmd_start_managed() {
   [ -n "$risk" ] || risk="$tr"
   [ "$profile" = small ] && [ "$risk" != low ] && die "profile small is for low risk only (this task is $risk). Use standard or high-assurance; a lighter profile never lowers a gate."
   m_sha "$(printf '%s' "$M_TASK" | jq -r .specSha)" || die "$M_WHY"
+  m_stale "$(printf '%s' "$M_TASK" | jq -r .specSha)" "$(printf '%s' "$M_TASK" | jq -r .specId)" "$(printf '%s' "$M_TASK" | jq -r '.acceptanceCriteria[]?')" && die "$M_WHY"
   m_deps "$key" || die "$M_WHY"
   slug="$key"; proposal="$KIT_DIR/work/$slug/proposal.md"
   if [ -f "$PROJECT_DIR/$proposal" ]; then kept=1; else m_write_dod "$PROJECT_DIR/$proposal" || die "cannot write $proposal"; fi

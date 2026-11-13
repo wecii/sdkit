@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # generate-tasks deterministic core (F07): trace, cycles, stable ids, render, report. No model, no network. Contract: docs/design-role-aware.md.
-# tasks.json: {"specId","specVersion","specSha","parent","tasks":[{"ref","title","summary"?,"slug"?,"risk","acceptanceCriteria":[],"dependsOn":[ref],"scope":[]}]}
-#   tasks.sh acs <tasks.json>                    AC ids found in the spec at specSha (AC-<feature>-<n> tokens), one per line
+# tasks.json: {"specId","specVersion","specSha","parent","tasks":[{"ref","title","summary"?,"slug"?,"change"?,"risk","acceptanceCriteria":[],"dependsOn":[ref],"scope":[]}]}
+#   tasks.sh acs <tasks.json> [--revision]       AC ids found in the spec at specSha (AC-<feature>-<n> tokens), one per line. --revision: only the active ACs the changes of this
+#                                                revision (applied at the spec's version at specSha) added or modified: the ACs that need NEW tasks
+#   tasks.sh changes <tasks.json>                slugs of the changes applied in the revision at specSha, one per line (empty for a spec without changes)
 #   tasks.sh trace <tasks.json> <ac-list|->      ac-list: file (ids by line or comma) or -; exit 1 on an unmapped AC, an unknown AC or an orphan task
 #   tasks.sh cycles <tasks.json>                 exit 1 and print the cycle (ref -> ref) on a dependency cycle or unknown dependsOn; no approval needed
 #   tasks.sh ids <tasks.json>                    tasks.json with key + externalId (<specId>:<taskKey>); key = hash of ACs+scope(+slug), never of order or title
@@ -35,14 +37,22 @@ gate() {  # approval first, then the spec version at that exact commit must matc
 # ids: tasks.json with key/externalId; the key hashes the sorted ACs, sorted scope and optional slug (identity), not the title or position
 keyed() {
   local lines out="" r h
-  lines="$(jq -r '.tasks[] | [.ref, ((.slug // "") | tostring), ([.acceptanceCriteria[]?] | sort | join(",")), ([.scope[]?] | sort | join(","))] | @tsv' "$f")"
-  while IFS=$'\t' read -r r s a c; do
-    h="$(printf '%s|%s|%s' "$a" "$c" "$s" | sha256 | cut -c1-10)"; out="$out$r $h"$'\n'
+  # the change slug is part of the identity: a modified AC always gets a NEW task, never an update of a possibly done one (an empty change hashes as before)
+  lines="$(jq -r '.tasks[] | [.ref, ((.slug // "") | tostring), ([.acceptanceCriteria[]?] | sort | join(",")), ([.scope[]?] | sort | join(",")), ((.change // "") | tostring)] | @tsv' "$f")"
+  while IFS=$'\t' read -r r s a c ch; do
+    h="$(printf '%s|%s|%s%s' "$a" "$c" "$s" "${ch:+|$ch}" | sha256 | cut -c1-10)"; out="$out$r $h"$'\n'
   done <<< "$lines"
   local dup; dup="$(printf '%s' "$out" | awk '{print $2}' | sort | uniq -d | head -1)"
   [ -z "$dup" ] || { echo "tasks: two tasks share the same ACs and scope (add a distinct slug): $(printf '%s' "$out" | awk -v d="$dup" '$2==d{printf "%s ",$1}')" >&2; return 1; }
   jq --arg s "$specId" --argjson m "$(printf '%s' "$out" | jq -Rn '[inputs | select(length>0) | split(" ") | {(.[0]): .[1]}] | add // {}')" \
     '.tasks |= map(. + {key: ("t" + $m[.ref]), externalId: ($s + ":t" + $m[.ref])})' "$f"; }
+# rev_changes: slugs of the changes applied in the revision of the spec at specSha (their applied.version = the spec version there)
+rev_changes() {
+  local ver c; ver="$(git -C "$REPO" show "$sha:$spath/spec.meta.json" 2>/dev/null | jq -r '.version // empty')"
+  git -C "$REPO" ls-tree -r --name-only "$sha" -- "$spath/changes" 2>/dev/null | grep '/change\.json$' | while read -r c; do
+    git -C "$REPO" show "$sha:$c" | jq -r --arg v "$ver" 'select(.status == "applied" and .applied.version == $v) | .slug'
+  done
+}
 edges() { jq -r '.tasks[] | .ref as $r | (.dependsOn // [])[] | "\($r) \(.)"' "$f"; }
 
 case "$verb" in
@@ -58,7 +68,15 @@ case "$verb" in
         st[u]=2; sp-- }
       END{ for(i=1;i<=n;i++) if(!st[nodes[i]]) dfs(nodes[i]) }')" || { echo "tasks: dependency cycle: $out" >&2; exit 1; }
     echo "no cycles" ;;
+  changes) gate; rev_changes ;;
   acs) gate
+    if [ "${2:-}" = --revision ]; then
+      sl="$(rev_changes)"; [ -n "$sl" ] || exit 0
+      spec="$(git -C "$REPO" archive "$sha" "$spath" 2>/dev/null | tar -xO --exclude='*/changes/*' 2>/dev/null)"
+      for c in $sl; do git -C "$REPO" show "$sha:$spath/changes/$c/change.json" | jq -r '.touches[]?'; done | sort -u | while read -r ac; do
+        printf '%s\n' "$spec" | grep -Eq "^####[[:space:]]+Scenario:[[:space:]]*$ac([[:space:]]+-|[[:space:]]*$)" && echo "$ac"
+      done; exit 0
+    fi
     git -C "$REPO" archive "$sha" "$spath" 2>/dev/null | tar -xO 2>/dev/null | grep -Eo '\bAC-[A-Za-z0-9_]+(-[A-Za-z0-9_]+)*(\.[A-Za-z0-9_]+)*' | sort -u || true ;;
   trace) gate; [ -n "${2:-}" ] || die "usage: trace <tasks.json> <ac-list|->" 2
     if [ "$2" = - ]; then al="$(cat)"; else [ -f "$2" ] || die "no such file: $2" 2; al="$(cat "$2")"; fi

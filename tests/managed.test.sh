@@ -68,6 +68,16 @@ task "$SHA2" > "$FJ/PRJ-7.json"; git -C specs checkout -q "$SHA2"
 check "revalidate with a new approved sha" "$SDD" revalidate --sha "$SHA2"
 eq "flag cleared, pinned to the new sha, old evidence dropped, back at proposed" "$(st '[(.blocked // "none"), .specSha, (.evidence // "none"), .phase] | join(",")')" "none,$SHA2,none,proposed"
 
+echo "gate (e): a later approved revision changes an AC of the task"
+( cd "$T/sw" && mkdir -p specs/S1/changes/c1 && echo '{"slug":"c1","status":"applied","applied":{"version":"1.2"},"touches":["AC-2"]}' > specs/S1/changes/c1/change.json \
+  && jq -n '{id:"S1",version:"1.2",status:"approved"}' > specs/S1/spec.meta.json && git add -A && git commit -qm v1.2 && git push -q origin main )
+SHA3="$(git -C "$T/sw" rev-parse HEAD)"; git -C specs fetch -q origin && git -C specs checkout -q "$SHA3"
+o="$("$SDD" gate push 2>&1)"; eq "push gate: blocked, names the AC and the change" "$?:$(grep -c 'AC-2 (change c1)' <<< "$o")" "1:1"
+"$SDD" abort >/dev/null 2>&1; task "$SHA2" > "$FJ/PRJ-7.json"
+o="$("$SDD" start --ticket PRJ-7 2>&1)"; eq "start: refused for a stale pin, no task" "$?:$(grep -c 'block --spec-change' <<< "$o"):$([ -f .sdkit/.sdd/state.json ] && echo state)" "1:1:"
+jq -n '{externalId:"S1:T2",specId:"S1",specVersion:"1.1",specSha:"'"$SHA2"'",acceptanceCriteria:["AC-1"],risk:"medium",dependencies:[],scope:["src/**"],parent:"PRJ-1"}' > "$FJ/PRJ-6.json"
+check "a task whose ACs the new revision does not touch starts" "$SDD" start --ticket PRJ-6
+
 echo "standalone (SDD_MANAGED unset) is unchanged"
 S="$T/s"; git_repo "$S"; mkdir -p "$S/.sdkit"; printf 'BASE_BRANCH=main\nSTACK=generic\n' > "$S/.sdkit/sdkit.env"
 eq "start <slug> as before, no managed fields; --ticket and block are not commands there" \
