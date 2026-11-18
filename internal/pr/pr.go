@@ -86,7 +86,9 @@ func (r *Request) ResolveHost() (string, error) {
 }
 
 var reCreds = regexp.MustCompile(`^https://([^@/]+:[^@/]+)@bitbucket\.org/`)
-var reRepo = regexp.MustCompile(`^https://(?:[^@/]+@)?bitbucket\.org/([^/]+/[^/]+?)(?:\.git)?$`)
+
+// reRepo takes https, scp-style ssh (git@bitbucket.org:ws/repo.git) and ssh:// origins; group 1 is workspace/repo.
+var reRepo = regexp.MustCompile(`^(?:https://(?:[^@/]+@)?bitbucket\.org/|ssh://(?:[^@/]+@)?bitbucket\.org(?::\d+)?/|[^@/:]+@bitbucket\.org:/?)([^/]+/[^/]+?)(?:\.git)?/?$`)
 
 // Run performs the request and returns the process exit code of the equivalent command.
 func (r *Request) Run(ctx context.Context) error {
@@ -235,8 +237,10 @@ func (r *Request) Check(ctx context.Context) (int, error) {
 		}
 		if have && (bearer || email != "") {
 			origin, _ := gitx.Run(r.Dir, "remote", "get-url", "origin")
-			slug := regexp.MustCompile(`^https://([^@/]+@)?bitbucket\.org/`).ReplaceAllString(origin, "")
-			slug = strings.TrimSuffix(slug, ".git")
+			slug := ""
+			if m := reRepo.FindStringSubmatch(origin); m != nil {
+				slug = m[1]
+			}
 			code := r.checkCredentials(ctx, slug, tok, email)
 			switch code {
 			case 200:

@@ -25,3 +25,22 @@ func TestHostAndAuth(t *testing.T) {
 		}
 	}
 }
+
+func TestRepoSlug(t *testing.T) {
+	for o, w := range map[string]string{
+		"https://bitbucket.org/ws/repo.git":      "ws/repo",
+		"https://u@bitbucket.org/ws/repo":        "ws/repo",
+		"git@bitbucket.org:ws/repo.git":          "ws/repo",
+		"ssh://git@bitbucket.org/ws/repo.git":    "ws/repo",
+		"ssh://git@bitbucket.org:22/ws/repo.git": "ws/repo",
+		"https://github.com/ws/repo.git":         "",
+	} {
+		g := ""
+		if m := reRepo.FindStringSubmatch(o); m != nil {
+			g = m[1]
+		}
+		if g != w {
+			t.Errorf("%s: %q", o, g)
+		}
+	}
+}
