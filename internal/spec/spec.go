@@ -235,7 +235,8 @@ func (e *env) maskGit(s string) string {
 
 // push runs `git push -u origin <branch>`; on failure it prints git's own message (masked) so the cause is visible.
 func (e *env) push(branch string) bool {
-	_, err := e.g("push", "-q", "-u", "origin", branch)
+	// interactive: with a plain https origin and no stored credential git must be able to ask.
+	err := gitx.RunInteractive(e.root, os.Stdin, "push", "-q", "-u", "origin", branch)
 	if err == nil {
 		return true
 	}

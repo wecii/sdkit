@@ -2,7 +2,11 @@
 package gitx
 
 import (
+	"bytes"
 	"context"
+	"errors"
+	"io"
+	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -105,4 +109,20 @@ func ChangedFiles(dir, base string, untracked bool) ([]string, error) {
 		files = append(files, Lines(u)...)
 	}
 	return files, nil
+}
+
+// RunInteractive runs git with the caller's stdin and without a timeout or a separate process
+// group, so a credential or ssh prompt can reach the terminal (git asks on /dev/tty, which a
+// background group may not read). Stdout and stderr are captured; a non-zero exit is an ExitError.
+func RunInteractive(dir string, in io.Reader, args ...string) error {
+	cmd := exec.Command("git", append([]string{"-c", "core.quotePath=false"}, args...)...)
+	cmd.Dir, cmd.Stdin = dir, in
+	var errb bytes.Buffer
+	cmd.Stderr = &errb
+	err := cmd.Run()
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
+		return &ExitError{Code: ee.ExitCode(), Args: args, Stderr: strings.TrimSpace(errb.String())}
+	}
+	return err
 }
