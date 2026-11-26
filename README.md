@@ -93,6 +93,10 @@ scoop install packaging\scoop\sdkit.json    # needs git; or unzip the release zi
 
 > `sdkit` is one binary; it must be on `PATH` (the plugin hooks and the git-hook shims call it). No package manager? Download the archive for your platform from the releases page, or `go install github.com/wecii/sdkit/cmd/sdkit@<tag>`. Maintainers: [packaging/homebrew/README.md](packaging/homebrew/README.md).
 
+### 1b. Optional: the VS Code extension (analysts)
+
+Runs the spec flow from VS Code, no terminal. Install the `spec-driven-kit-<version>.vsix` from the [Releases](https://github.com/wecii/sdkit/releases) page (not on a marketplace yet), with the **same version of `sdkit`** from step 1. Steps, update and troubleshooting: [docs/guide.md §11](docs/guide.md#vs-code-extension-install-and-update).
+
 ### 2. Set a repo up, once, by one person
 
 ```sh
@@ -122,7 +126,7 @@ Install sdkit on your machine; host files are generated per machine and hidden f
 | Codex | `$spec-driven-dev <ticket or description>` |
 | OpenCode, Cursor, Gemini | ask the agent to use the `spec-driven-dev` skill on the task |
 
-> **Updating:** `brew upgrade sdkit`, then `sdkit upgrade` in each repo (and refresh the plugin in Claude Code with `/plugin`). It adds what is new and never touches your files. Manual steps per version: [docs/upgrading.md](docs/upgrading.md).
+> **Updating:** `brew update && brew upgrade sdkit`, then `sdkit upgrade` in each repo (and refresh the plugin in Claude Code with `/plugin`). It adds what is new and never touches your files. The VS Code extension is updated by hand with each release (new `.vsix`, see [§11](docs/guide.md#vs-code-extension-install-and-update)). Manual steps per version: [docs/upgrading.md](docs/upgrading.md).
 
 ### Pick an environment
 

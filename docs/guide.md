@@ -723,6 +723,28 @@ scoop install packaging\scoop\sdkit.json                                        
 ```
 Or unpack the release archive for your platform and put `sdkit` (`sdkit.exe`) on `PATH`, or `go install github.com/wecii/sdkit/cmd/sdkit@<tag>`. Requirements: `git` and your stack's toolchain (`node` only in an analyst repo, for OpenSpec); no `jq`, bash or python. The plugin hooks and the git-hook shims call `sdkit`, so it must be on the `PATH` of the host (a GUI editor started from the desktop may need a restart after installing). `sdkit doctor` says when the binary and the plugin version differ.
 
+### VS Code extension: install and update
+
+The extension (`editors/vscode`, [design-vscode.md](design-vscode.md)) is shipped as a file, **not** from a marketplace: every release has an asset `spec-driven-kit-<version>.vsix` on the [Releases](https://github.com/wecii/sdkit/releases) page. It drives `sdkit ext`, so the extension and the `sdkit` binary must be the same version. Always update the two together.
+
+**Install (first time)**
+1. Install `sdkit` as above and check `sdkit version`.
+2. Download `spec-driven-kit-<version>.vsix` of the same version from the Releases page (or `gh release download v<version> -R wecii/sdkit -p '*.vsix'`).
+3. Install it, either way:
+   - VS Code: Command Palette, **Extensions: Install from VSIX…**, pick the file; or
+   - terminal: `code --install-extension spec-driven-kit-<version>.vsix --force`.
+4. **Developer: Reload Window.** The welcome page opens and shows what is still missing (agent, OpenSpec, Jira, Bitbucket), each with a fix button.
+
+**Update**
+1. `brew update && brew upgrade sdkit` (Windows: put the new `sdkit.exe` over the old one), then `sdkit version`.
+2. Download the new `.vsix` and install it the same way as above (`--force` replaces the old one).
+3. Reload the window.
+
+**Check and troubleshoot**
+- The version in the Extensions list and `sdkit version` must match. If the extension says `sdkit` is too old or missing, open Settings, `sdkit.binaryPath`: empty or `sdkit` uses the one on `PATH`; a full path (e.g. a binary you built) overrides it.
+- Several `sdkit` on the machine (a brew one and a built one): `which -a sdkit`; the extension uses `sdkit.binaryPath`, or the first on the editor's `PATH`.
+- The extension has no auto-update; a new release does nothing until its `.vsix` is installed.
+
 ### Locked-down Windows (corporate PC, no admin, commands restricted)
 
 The lowest-risk path runs no installer and no script: copy one file and edit one setting in the GUI.
