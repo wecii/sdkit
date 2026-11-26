@@ -22,6 +22,7 @@ import (
 // Options is what a run needs; cmd fills it, this package reads no environment.
 type Options struct {
 	Root, Action, ID string
+	Note             string   // what the analyst wants changed, typed before an update; empty when they edited the files or have nothing to add
 	Fresh            bool     // start a new host session even when an earlier one could be continued
 	Rules            string   // put before the task: the person is not technical and has no terminal
 	Env              []string // for the session (PATH with this binary first)
@@ -87,7 +88,7 @@ func run(ctx context.Context, o Options, in io.Reader, w *writer) error {
 			return err
 		}
 	}
-	ti := ui.TaskInput{}
+	ti := ui.TaskInput{Note: o.Note}
 	if b, ok := strings.CutPrefix(ui.Branch(root), "spec/"+o.ID+"--"); ok {
 		ti.Slug = b
 	}

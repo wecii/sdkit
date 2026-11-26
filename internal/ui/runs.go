@@ -103,7 +103,8 @@ func (s *Server) runsList(w http.ResponseWriter, r *http.Request) {
 
 // touchesSpecFiles are the actions that write the spec's files, so they need the spec's own tree.
 func touchesSpecFiles(action string) bool {
-	return action == "generate-specs" || action == "update-specs" || action == "update-manual" || action == "merge-specs"
+	return action == "generate-specs" || action == "update-specs" || action == "update-manual" || action == "merge-specs" ||
+		action == "refine-specs" || action == "generate-design"
 }
 
 // run starts a session for {"action","id",...}: one per spec, in that spec's tree.

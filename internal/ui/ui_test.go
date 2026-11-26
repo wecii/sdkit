@@ -35,7 +35,8 @@ func TestParseLine(t *testing.T) {
 			[]Event{{Kind: KindStep, Skill: "g", Step: 1, Total: 2, Name: "Ask", State: "started"}}},
 		{"banner in a block-list tool result", `{"type":"user","message":{"content":[{"type":"tool_result","content":[{"type":"text","text":"[sdkit] g - Step 2/2: Z - done"}]}]}}`,
 			[]Event{{Kind: KindStep, Skill: "g", Step: 2, Total: 2, Name: "Z", State: "done"}}},
-		{"other tool output is not shown", `{"type":"user","message":{"content":[{"type":"tool_result","content":"x"}]}}`, nil},
+		{"other tool output comes as an output event", `{"type":"user","message":{"content":[{"type":"tool_result","content":"x"}]}}`, []Event{{Kind: KindOutput, Text: "x"}}},
+		{"thinking is a thought event", `{"type":"assistant","message":{"content":[{"type":"thinking","thinking":" hmm "}]}}`, []Event{{Kind: KindThought, Text: "hmm"}}},
 		{"garbage gives nothing", `not json`, nil},
 		{"unknown content shape gives nothing", `{"type":"assistant","message":{"content":"plain"}}`, nil},
 	}

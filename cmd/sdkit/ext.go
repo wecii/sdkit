@@ -14,7 +14,7 @@ import (
 	"github.com/wecii/sdkit/internal/ui"
 )
 
-// sdkit ext run <action> <id> [--fresh] [--host <cmd>]   one agent run for an editor extension (docs/design-vscode.md)
+// sdkit ext run <action> <id> [--fresh] [--note <text>] [--host <cmd>]   one agent run for an editor extension (docs/design-vscode.md)
 // sdkit ext health [--host <cmd>]   the onboarding checklist as one JSON document
 // sdkit ext specs                   every spec with its state, as JSON
 // sdkit ext spec <id>               the page of one spec (state, actions, files and the folder they are in), as JSON
@@ -27,7 +27,7 @@ import (
 //	actions: generate-specs, update-specs, update-manual, merge-specs
 func init() { cli.Register("ext", runExt) }
 
-const extUsage = "usage: sdkit ext run <action> <id> [--fresh] [--host <cmd>] | health [--host <cmd>] | specs | spec <id> | spec branch|change <id> | connection [save] | prespec <id> [--overwrite] | sync"
+const extUsage = "usage: sdkit ext run <action> <id> [--fresh] [--note <text>] [--host <cmd>] | health [--host <cmd>] | specs | spec <id> | spec branch|change <id> | connection [save] | prespec <id> [--overwrite] | sync"
 
 func runExt(args []string) int {
 	if len(args) > 0 && args[0] != "run" {
@@ -43,6 +43,13 @@ func runExt(args []string) int {
 		switch args[i] {
 		case "--fresh":
 			o.Fresh = true
+		case "--note":
+			if i+1 >= len(args) {
+				fmt.Fprintln(os.Stderr, extUsage)
+				return cli.ExitUsage
+			}
+			i++
+			o.Note = args[i]
 		case "--host":
 			if i+1 >= len(args) {
 				fmt.Fprintln(os.Stderr, extUsage)

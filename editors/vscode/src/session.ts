@@ -8,6 +8,8 @@ export interface SessionOptions {
   id: string;
   host?: string;
   fresh?: boolean;
+  /** what the person typed they want changed; the binary puts it in the agent's task */
+  note?: string;
   onLine: (o: Out) => void;
   onStderr?: (s: string) => void;
 }
@@ -21,6 +23,7 @@ export class Session {
   constructor(private o: SessionOptions) {
     const args = ['ext', 'run', o.action, o.id];
     if (o.fresh) args.push('--fresh');
+    if (o.note) args.push('--note', o.note);
     if (o.host) args.push('--host', o.host);
     this.child = spawn(o.binary, args, { cwd: o.cwd, stdio: ['pipe', 'pipe', 'pipe'] });
     this.child.stdout!.on('data', d => this.feed(String(d)));
