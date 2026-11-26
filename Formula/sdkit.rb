@@ -3,25 +3,25 @@
 class Sdkit < Formula
   desc "Spec-driven development workflow and guards for AI coding agents (Claude Code, Codex, OpenCode, Cursor, Gemini)"
   homepage "https://github.com/wecii/sdkit"
-  version "3.0.1"
+  version "3.0.2"
 
   on_macos do
     if Hardware::CPU.arm?
       url "https://github.com/wecii/sdkit/releases/download/v#{version}/sdkit_#{version}_darwin_arm64.tar.gz"
-      sha256 "510b02090b44725c82be8cbff93484f02b57e67d3b88cfc2af756713a2fef557"
+      sha256 "d44e660fdb7cd24c64a8611cc965430f17c22f59fecd707b749487fef8abfff4"
     else
       url "https://github.com/wecii/sdkit/releases/download/v#{version}/sdkit_#{version}_darwin_amd64.tar.gz"
-      sha256 "d02fd105d0de15970c1973f2bd6c20417e0a69f80a4154807df940aed3ae078f"
+      sha256 "f23e9fd5aa3a7c28510a611c41c091b1265e43728c49519035ec7bc731b852fb"
     end
   end
 
   on_linux do
     if Hardware::CPU.arm?
       url "https://github.com/wecii/sdkit/releases/download/v#{version}/sdkit_#{version}_linux_arm64.tar.gz"
-      sha256 "5e323b4d824bff94cb0eb125c72be4bfda387d1e9124665a59dd7c7cb02c194d"
+      sha256 "ea973e039322becc7162ab450fed921c577d2c1357941f33bf6deed2c0045073"
     else
       url "https://github.com/wecii/sdkit/releases/download/v#{version}/sdkit_#{version}_linux_amd64.tar.gz"
-      sha256 "0a90be7990cf0319def3452db9822d8dca3ebd4d81ad5e66be85e470a611de07"
+      sha256 "67113c5ccaaaf683c93f2a136303c635d625463dc0a2d384f8adf62a9030e290"
     end
   end
 
