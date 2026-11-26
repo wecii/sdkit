@@ -7,7 +7,7 @@ Extension: **Spec-Driven Kit**, id `sdkit.sdkit`, in `editors/vscode/`. Audience
 
 | Question | Decision |
 |---|---|
-| UI | Native VS Code parts only: TreeView, QuickPick and InputBox, status bar, Output channel, the normal editor, SecretStorage. No webview, and no dependence on `sdkit ui`. |
+| UI | Native VS Code parts: TreeView, QuickPick and InputBox, status bar, Output channel, the normal editor, SecretStorage. One webview, the run page (it only draws; nothing is decided in it). No dependence on `sdkit ui`. |
 | Logic | Stays in Go. The extension is a thin driver of `sdkit ext <verb>`; state is derived from the repo on every call. |
 | Agent | A headless `claude -p` stream-json session, driven by Go (`internal/ui` `Run`), not the Agent SDK. Questions use the same `sdkit ui ask` bridge the skills already know. |
 | Binary | Not embedded in the first slice: the extension takes `sdkit` from PATH (`sdkit.binaryPath`). Next: a single universal VSIX that downloads the release archive of its own version and checks its checksum. Embedding (6 platform VSIX) only if networks block the download. |
@@ -18,7 +18,7 @@ Extension: **Spec-Driven Kit**, id `sdkit.sdkit`, in `editors/vscode/`. Audience
 
 VS Code ships its own Claude and Codex agent SDKs and an Agents window, but (checked on 1.147.0, 2026-11) its extension points (`agentSessionsWorkspace`, `agentsWindowConfiguration`, the chat session providers) are proposed APIs, which a Marketplace extension cannot use, and the stable `vscode.d.ts` (1.146) has only chat participants. On the analyst's machine the window offered Copilot only, with no way to add Claude. So the extension runs its own headless session and draws it with native parts. Look again when the window opens to third-party providers.
 
-## The protocol: `sdkit ext run <action> <id>`
+## The protocol: `sdkit ext run <action> <id> [--fresh] [--note <text>]`
 
 No server. One JSON line per message on the standard streams (`internal/ext/run.go` is the source of truth):
 
@@ -37,7 +37,7 @@ The ask bridge that the session's `sdkit ui ask` calls is a loopback listener in
 | Panel | Extension |
 |---|---|
 | Stepper | TreeView "Run", built from the step banners (`steps.ts`) |
-| Conversation | The run page: a virtual Markdown document (`sdkit-run:/<id>.md`, `transcript.ts`) drawn by VS Code's own Markdown preview in the main editor area and redrawn on every event. A "Şu an" box at the top says what matters now (a question waiting, the end, the last message); the conversation follows, with each question and the person's answer. View-only: questions are answered in the QuickPick, and the status bar brings a closed one back. The raw log stays in the Output channel. |
+| Conversation | The run page: a webview in the main editor area (`runpage.ts`, drawn from the pure view model in `transcript.ts`) redrawn on every event. Top: a progress bar and a horizontal stepper (✓ done, pulsing active, grey pending) from the step banners; a status card says what matters now (a question waiting, the end, what the agent does and for how long). Two tabs: **Özet** (the agent's messages and each question with the answer) and **Tam konuşma** (the whole stream: messages, the agent's reasoning, every tool call with its output folded away; capped at the newest 1500 lines, output and thoughts clipped to 4000 characters in `sdkit ext run`). Agent text is inserted with `textContent` under a nonce CSP. View-only: questions are answered in the QuickPick, and the status bar brings a closed one back. The raw log stays in the Output channel. |
 | Question form | QuickPick (single or multi), InputBox for free text; `ignoreFocusOut`, because the agent waits |
 | Finding card, plan gate | Not in the spike: asked as a plain choice; later a diff editor and a Markdown preview |
 | Waiting badge | Status bar item and a warning notification |

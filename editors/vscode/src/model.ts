@@ -90,7 +90,7 @@ export type MenuKind = 'run' | 'startChange' | 'editChange' | 'files';
 export interface MenuItem { kind: MenuKind; label: string; detail?: string; action?: string }
 
 /** The agent runs a run action can start. `generate-tasks` needs a Jira parent and a version the extension does not ask for yet. */
-const RUN_ACTIONS = ['generate-specs', 'update-specs', 'update-manual', 'merge-specs'];
+const RUN_ACTIONS = ['generate-specs', 'update-specs', 'update-manual', 'merge-specs', 'refine-specs', 'generate-design'];
 
 /**
  * What the person can do with a spec, from the kit's own list for its stage (the same one the panel shows), nothing else. Files come

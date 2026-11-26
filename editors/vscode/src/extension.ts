@@ -4,7 +4,9 @@ import { Out, QuestionItem } from './protocol';
 import { collect } from './questions';
 import { Session } from './session';
 import { Stepper } from './steps';
-import { actionTitle, activityLabel, Entry, Page, pagePath, pushActivity, render } from './transcript';
+import { randomBytes } from 'crypto';
+import { actionTitle, activityLabel, attachOutput, Entry, LogItem, Page, pushActivity, pushLog, view as pageView } from './transcript';
+import { runPageHtml } from './runpage';
 import { sdkitJson, sdkitJsonWithInput, sdkitJsonWithText } from './cli';
 import { Agent, agentName, planFix } from './fixes';
 import { Connection, ConnectionInput, ConnectResult, describeResult, fields } from './connect';
@@ -99,27 +101,43 @@ export function activate(ctx: vscode.ExtensionContext) {
   let session: Session | undefined;
   let waiting = 0;
 
-  // the run page: a virtual Markdown document drawn by VS Code's own preview in the middle of the window, redrawn on every event
+  // the page in the middle of the window (runpage.ts): the specs list, one spec, or a run. One panel; where it is lives here, what it
+  // draws is posted to it, and its clicks come back as messages (handled below, after the actions they call exist).
   const pages = new Map<string, Page>();
-  const changed = new vscode.EventEmitter<vscode.Uri>();
-  const uriOf = (id: string) => vscode.Uri.from({ scheme: 'sdkit-run', path: pagePath(id) });
-  ctx.subscriptions.push(changed, vscode.workspace.registerTextDocumentContentProvider('sdkit-run', {
-    onDidChange: changed.event,
-    provideTextDocumentContent: uri => {
-      const p = pages.get(uri.path.replace(/^\/|\.md$/g, ''));
-      return p ? render(p) : '# Bu çalışma artık açık değil\n';
-    },
-  }));
+  let main: vscode.WebviewPanel | undefined;
+  let nav: { screen: 'list' | 'spec' | 'run'; id?: string } = { screen: 'list' };
+  let openDetail: SpecDetail | undefined; // the spec page's data, fetched when it is opened or after an action
+  const post = (p: Page) => { if (nav.screen === 'run' && nav.id === p.id) void main?.webview.postMessage({ type: 'run', view: pageView(p) }); };
+  /** Draw whatever screen is current. */
+  async function draw() {
+    if (!main) return;
+    if (nav.screen === 'run' && nav.id && pages.has(nav.id)) return post(pages.get(nav.id)!);
+    if (nav.screen === 'spec' && nav.id) {
+      try { openDetail = await detailOf(nav.id); } catch (e) { fail(`${nav.id} açılamadı`, e); nav = { screen: 'list' }; return draw(); }
+      const item = specList.find(x => x.id === nav.id);
+      const busy = !!session && lastRun === nav.id;
+      return void main.webview.postMessage({ type: 'spec', id: nav.id, label: openDetail.label, branch: openDetail.branch, flow: item?.flow ?? [], folder: item?.folder,
+        menu: menu(openDetail), files: openDetail.files, hasRun: pages.has(nav.id), busy });
+    }
+    nav = { screen: 'list' };
+    void main.webview.postMessage({ type: 'list', groups: groupSpecs(specList), running: session ? lastRun : undefined });
+  }
   let redrawTimer: NodeJS.Timeout | undefined;
-  /** Events come in bursts; one redraw per burst keeps the preview from flickering. */
+  /** Events come in bursts; one redraw per burst keeps the page from flickering. */
   function redraw(p: Page) {
     if (redrawTimer) return;
-    redrawTimer = setTimeout(() => { redrawTimer = undefined; changed.fire(uriOf(p.id)); }, 150);
+    redrawTimer = setTimeout(() => { redrawTimer = undefined; post(p); }, 150);
   }
-  async function showPage(id: string) {
-    // the preview opens the document itself; showPreview (not ToSide) puts it in the main editor area
-    await vscode.commands.executeCommand('markdown.showPreview', uriOf(id));
+  async function showMain(to: typeof nav = nav) {
+    nav = to;
+    if (main) { main.reveal(vscode.ViewColumn.Active); return draw(); }
+    main = vscode.window.createWebviewPanel('sdkitMain', 'SDKit', vscode.ViewColumn.Active, { enableScripts: true, retainContextWhenHidden: true });
+    main.webview.html = runPageHtml(randomBytes(16).toString('hex'), main.webview.cspSource);
+    // the page asks for its first draw once its script runs; a draw sent earlier would be lost
+    main.webview.onDidReceiveMessage(m => void onPage(m));
+    main.onDidDispose(() => { main = undefined; });
   }
+  const showPage = (id: string) => showMain({ screen: 'run', id });
   // questions still waiting, so the status bar can bring one back after the person closed the box
   const pending = new Map<number, () => void>();
   let lastRun: string | undefined;
@@ -195,6 +213,7 @@ export function activate(ctx: vscode.ExtensionContext) {
       health.set(healthNodes(h));
       specList = await sdkitJson<SpecItem[]>(binary(), cwd, ['specs']);
       specsView.set(specNodes(specList, specFiles));
+      if (nav.screen === 'list') void draw();
     } catch (e) {
       const err = describeCliError((e as Error).message);
       // which binary was tried is the first thing to know: an old one found on PATH and a wrong path look alike otherwise
@@ -254,7 +273,7 @@ export function activate(ctx: vscode.ExtensionContext) {
     vscode.window.showInformationMessage('Terminalde işlem bitince listeyi yenileyin (ya da terminali kapatın).');
   }
 
-  async function startRun(action: string, id: string) {
+  async function startRun(action: string, id: string, opts: { fresh?: boolean; note?: string } = {}) {
     const cwd = folder();
     if (!cwd) return void vscode.window.showErrorMessage('Önce proje klasörünü açın.');
     if (session) return void vscode.window.showWarningMessage('Bir çalışma sürüyor; önce onu durdurun.');
@@ -282,15 +301,16 @@ export function activate(ctx: vscode.ExtensionContext) {
     view.status = 'Başlıyor…';
     view.refresh();
     out.clear(); // the raw log stays available under Output, the page is what the person reads
-    const page: Page = { id, title: actionTitle(action), steps: [], entries: [], running: true, startedAt: Date.now(), activity: [] };
+    const page: Page = { id, title: actionTitle(action), steps: [], entries: [], running: true, action, startedAt: Date.now(), activity: [] };
     pages.set(id, page);
     lastRun = id;
     await showPage(id);
+    post(page); // a page left open from an earlier run of this spec shows the new one
     bar.text = '$(sync~spin) SDKit çalışıyor';
     bar.command = 'sdkit.showRun';
     bar.show();
     const s = new Session({
-      binary: binary(), cwd, action, id, host: cfg.get<string>('hostCommand') || undefined,
+      binary: binary(), cwd, action, id, fresh: opts.fresh, note: opts.note, host: cfg.get<string>('hostCommand') || undefined,
       onLine: o => void onLine(s, page, o), onStderr: t => out.append(t),
     });
     session = s;
@@ -299,6 +319,7 @@ export function activate(ctx: vscode.ExtensionContext) {
     await s.done;
     clearInterval(beat);
     session = undefined;
+    if (nav.screen !== 'run') void draw(); // the spec's buttons were off while the run went on
     for (const [path, owner] of watched) if (owner === id) told.delete(path); // a sent edit can be followed by another
     void refresh(); // a run changes what the specs list says
   }
@@ -307,22 +328,28 @@ export function activate(ctx: vscode.ExtensionContext) {
   /** A failure of the kit comes with words for the person (it already says what to do); show them as they are. */
   const fail = (what: string, e: unknown) => void vscode.window.showErrorMessage(`${what}: ${(e as Error).message}`);
 
-  async function pickAction(id: string) {
-    const cwd = folder();
-    if (!cwd) return;
-    let d: SpecDetail;
-    try { d = await detailOf(id); } catch (e) { return fail(`${id} açılamadı`, e); }
-    const items = menu(d);
-    if (!items.length) return void vscode.window.showInformationMessage(`${id}: ${d.label.trim()}. Şu an yapılacak bir şey yok.`);
-    const pick = await vscode.window.showQuickPick(items.map(i => ({ label: i.label, detail: i.detail, item: i })), { title: `${id}: ${d.label.trim()}`, placeHolder: 'Ne yapmak istiyorsunuz?' });
-    if (!pick) return;
-    const it = pick.item;
-    if (it.kind === 'run') return startRun(it.action!, id);
-    if (it.kind === 'files') return openFiles(d);
+  /** A button of a spec's page: what the kit offers at this stage, by its position in `menu`. */
+  async function doMenu(id: string, index: number) {
+    const d = openDetail?.id === id ? openDetail : undefined;
+    const it = d && menu(d)[index];
+    if (!it) return;
+    if (it.kind === 'run') {
+      // an update is not only the Tech Lead's to ask for: the person may have edited the files, or may say here what to change
+      if (it.action === 'update-specs' || it.action === 'refine-specs') {
+        const note = await vscode.window.showInputBox({
+          title: it.label, ignoreFocusOut: true,
+          prompt: 'Ne değişsin? Dosyaları kendiniz düzelttiyseniz ya da PR\'daki yorumlar yeterliyse boş bırakıp Enter\'a basın. (Esc: vazgeç)',
+          placeHolder: 'Örn. AC-3\'teki süre 30 sn değil 60 sn olsun; Q2\'yi kapat',
+        });
+        if (note === undefined) return;
+        return startRun(it.action, id, { note: note.trim() || undefined });
+      }
+      return startRun(it.action!, id);
+    }
     if (!(await openChange(id))) return;
     // "start a change" hands the run to the agent, which asks the person what changes; "edit by hand" opens the new, empty change's files
     if (it.kind === 'startChange') return startRun('update-specs', id);
-    return openFiles(await detailOf(id));
+    void draw(); // the change moved the spec to its branch: the page's files and buttons follow
   }
 
   /** The kit opens the change (and moves to its branch); git's own refusal (unsaved edits) comes back in plain words. */
@@ -354,14 +381,6 @@ export function activate(ctx: vscode.ExtensionContext) {
     } catch (e) {
       return [{ kind: 'row', label: `Dosyalar okunamadı: ${(e as Error).message}`, icon: 'error' }];
     }
-  }
-
-  async function openFiles(d: SpecDetail) {
-    if (session && lastRun === d.id) return void vscode.window.showWarningMessage('Bu spec için bir çalışma sürüyor; bitmesini bekleyin ya da durdurun, sonra dosyaları düzenleyin.');
-    const list = fileItems(d);
-    const pick = await vscode.window.showQuickPick(list.map(l => l.separator ? { label: l.label, kind: vscode.QuickPickItemKind.Separator } : { label: l.label, description: l.description, detail: l.detail, file: l.file } as vscode.QuickPickItem & { file?: FileItem }), { title: `${d.id}: dosyalar`, placeHolder: 'Açılacak dosya' });
-    const file = (pick as { file?: FileItem } | undefined)?.file;
-    if (file) await openFile(d, file);
   }
 
   async function openFile(d: SpecDetail, file: FileItem) {
@@ -420,11 +439,6 @@ export function activate(ctx: vscode.ExtensionContext) {
   }
   ctx.subscriptions.push(vscode.workspace.onDidSaveTextDocument(offerSend));
 
-  async function pickSpec() {
-    if (!specList.length) return void vscode.window.showInformationMessage('Henüz spec yok. Önce yeni bir spec ekleyin.', 'Yeni spec').then(c => c && newSpec());
-    const pick = await vscode.window.showQuickPick(specList.map(x => ({ label: x.id, description: x.label.trim() })), { title: 'Hangi spec?' });
-    if (pick) await pickAction(pick.label);
-  }
 
   // the pre-spec is written in a normal editor tab: an untitled Markdown document that only the save button below sends to the kit
   let draft: { doc: vscode.TextDocument; id: string } | undefined;
@@ -496,6 +510,7 @@ export function activate(ctx: vscode.ExtensionContext) {
     text: (item: QuestionItem) => Promise.resolve(vscode.window.showInputBox({ title: item.header, prompt: item.question, ignoreFocusOut: true })),
   };
 
+  const qlog = new Map<number, Extract<LogItem, { kind: 'question' }>>();
   async function onLine(s: Session, page: Page, o: Out) {
     if (o.type === 'event') {
       const e = o.event;
@@ -503,10 +518,20 @@ export function activate(ctx: vscode.ExtensionContext) {
         view.refresh();
         page.steps = view.stepper.list();
       }
-      if (e.kind === 'text' && e.text?.trim()) page.entries.push({ kind: 'agent', text: e.text });
+      if (e.kind === 'text' && e.text?.trim()) {
+        page.entries.push({ kind: 'agent', text: e.text });
+        pushLog(page, { kind: 'agent', text: e.text });
+      }
+      // the full conversation keeps what the summary leaves out: reasoning, every tool call and what it printed back
+      if (e.kind === 'thought' && e.text) pushLog(page, { kind: 'thought', text: e.text });
+      if (e.kind === 'tool') pushLog(page, { kind: 'tool', name: e.name ?? '', text: e.text ?? '' });
+      if (e.kind === 'output' && e.text) attachOutput(page, e.text);
       // the agent can work minutes between two messages: what it is doing now is what keeps the page alive
       if (e.kind === 'tool') pushActivity(page, activityLabel(e.name ?? '', e.text), Date.now());
-      if (e.kind === 'status' && e.name?.startsWith('ask-')) page.entries.push({ kind: 'note', text: `Soru gösterilemedi: ${e.text ?? ''}` });
+      if (e.kind === 'status' && e.name?.startsWith('ask-')) {
+        page.entries.push({ kind: 'note', text: `Soru gösterilemedi: ${e.text ?? ''}` });
+        pushLog(page, { kind: 'note', text: `Soru gösterilemedi: ${e.text ?? ''}` });
+      }
       if (e.kind === 'text' || e.kind === 'status') out.appendLine(e.text ?? '');
       // what the agent runs (raw commands) is for developers: shown only when asked for, as the panel keeps it under "details"
       if (e.kind === 'tool' && vscode.workspace.getConfiguration('sdkit').get<boolean>('showToolActivity')) out.appendLine(`  · ${e.text ?? e.name ?? ''}`);
@@ -517,6 +542,8 @@ export function activate(ctx: vscode.ExtensionContext) {
       if (!entry) {
         entry = { kind: 'question', id: o.id, items: o.questions.questions };
         page.entries.push(entry);
+        qlog.set(o.id, { kind: 'question', text: o.questions.questions.map(q => q.question).join('\n') });
+        pushLog(page, qlog.get(o.id)!);
       }
       entry.dismissed = false;
       pending.delete(o.id);
@@ -529,6 +556,8 @@ export function activate(ctx: vscode.ExtensionContext) {
       waiting--;
       if (answers) {
         entry.answers = answers;
+        const ql = qlog.get(o.id);
+        if (ql) ql.answer = Object.values(answers).join(' · ');
         s.answer(o.id, answers);
       } else {
         entry.dismissed = true;
@@ -544,17 +573,40 @@ export function activate(ctx: vscode.ExtensionContext) {
       bar.hide();
       pending.clear();
       page.running = false;
+      view.stepper.finish(!o.failed);
+      page.steps = view.stepper.list();
       page.entries.push({ kind: 'end', failed: !!o.failed, text: o.error });
+      pushLog(page, { kind: 'end', failed: !!o.failed, text: o.error ?? '' });
       redraw(page);
       view.status = o.failed ? `Başarısız: ${o.error ?? ''}` : 'Bitti';
       view.refresh();
-      if (o.failed) vscode.window.showErrorMessage(`SDKit: ${o.error ?? 'çalışma başarısız oldu'}`);
+      if (o.failed && !page.stopped) vscode.window.showErrorMessage(`SDKit: ${o.error ?? 'çalışma başarısız oldu'}`);
+    }
+  }
+
+  /** A click on the page. The page decides nothing: each message is one of the actions the trees and commands already had. */
+  async function onPage(m: { type: string; id?: string; index?: number; path?: string }) {
+    switch (m.type) {
+      case 'ready': return draw();
+      case 'back': return showMain({ screen: 'list' });
+      case 'refresh': await refresh(); return draw();
+      case 'stop': { const p = m.id ? pages.get(m.id) : undefined; if (p && session) { p.stopped = true; session.stop(); } return; }
+      case 'resume': case 'restart': { // the same action again: the kit continues the earlier agent session unless it is told to start fresh
+        const p = m.id ? pages.get(m.id) : undefined;
+        return p?.action ? startRun(p.action, p.id, { fresh: m.type === 'restart' }) : undefined;
+      }
+      case 'new': return newSpec();
+      case 'open-spec': return m.id ? showMain({ screen: 'spec', id: m.id }) : undefined;
+      case 'show-run': return m.id && pages.has(m.id) ? showMain({ screen: 'run', id: m.id }) : undefined;
+      case 'folder': return openSpecFolder({ spec: specList.find(x => x.id === m.id) });
+      case 'menu': return m.id && m.index !== undefined ? doMenu(m.id, m.index) : undefined;
+      case 'file': return m.id && m.path ? openSpecFile(m.id, m.path) : undefined;
     }
   }
 
   ctx.subscriptions.push(
-    vscode.commands.registerCommand('sdkit.run', () => pickSpec()),
-    vscode.commands.registerCommand('sdkit.specAction', (id: string) => pickAction(id)),
+    vscode.commands.registerCommand('sdkit.run', () => showMain({ screen: 'list' })),
+    vscode.commands.registerCommand('sdkit.specAction', (id: string) => showMain({ screen: 'spec', id })),
     vscode.commands.registerCommand('sdkit.newSpec', newSpec),
     vscode.commands.registerCommand('sdkit.openSpecFile', openSpecFile),
     vscode.commands.registerCommand('sdkit.openSpecFolder', openSpecFolder),

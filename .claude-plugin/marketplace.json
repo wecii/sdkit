@@ -11,7 +11,7 @@
       "name": "spec-driven-kit",
       "source": "./",
       "description": "Spec-driven development workflow with guard hooks, verifier agents and a verify engine.",
-      "version": "3.0.1"
+      "version": "3.0.2"
     }
   ]
 }

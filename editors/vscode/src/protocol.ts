@@ -2,7 +2,7 @@
 
 export interface RunEvent {
   seq: number;
-  kind: 'step' | 'text' | 'tool' | 'result' | 'status';
+  kind: 'step' | 'text' | 'tool' | 'output' | 'thought' | 'result' | 'status';
   text?: string;
   skill?: string;
   step?: number;

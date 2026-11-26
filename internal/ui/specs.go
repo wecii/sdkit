@@ -123,17 +123,31 @@ func Task(root, action, id string, in TaskInput) (string, error) {
 	switch action {
 	case "generate-specs":
 		return fmt.Sprintf("Use the generate-specs skill for the spec id %q (the pre-spec has the same name). If work on it already exists, continue from where `sdkit spec next %s` says it stands.", id, id), nil
-	case "update-specs", "update-manual":
+	case "update-specs", "update-manual", "refine-specs":
+		if action == "refine-specs" {
+			t := fmt.Sprintf("Use the generate-specs skill for the spec id %q. Its output passed review but is not published yet, and the analyst wants a change first. ", id)
+			if n := strings.TrimSpace(in.Note); n != "" {
+				t += fmt.Sprintf("What they want changed, in their words (authoritative; do not ask again what to change): %q. ", n)
+			} else {
+				t += "Ask what to change with `sdkit ui ask` (free text). "
+			}
+			return t + "Make the smallest edit that does it (AC ids stay), run the review round for what changed, and ask the send-or-edit question again before publishing. Do not publish without that answer.", nil
+		}
 		t := fmt.Sprintf("Use the update-specs skill for the spec id %q.", id)
 		if action == "update-manual" {
 			t += fmt.Sprintf(" The analyst already edited the files by hand in the panel: start from `sdkit spec changed %s` and the git diff, treat the diff as the instruction and their text as authoritative, and re-derive nothing. Then review, publish and open or update the PR as the skill says.", id)
 		} else {
-			t += " Read the Tech Lead's change requests from its pull request, and the analyst's own edits, as the skill says."
+			t += " Read the Tech Lead's change requests from its pull request, and the analyst's own edits, as the skill says. A Tech Lead request is not required: when there is neither a request nor an edit, ask the analyst what to change with `sdkit ui ask` (free text) and work from that."
+			if n := strings.TrimSpace(in.Note); n != "" {
+				t += fmt.Sprintf(" The analyst wrote what they want changed, in their words (authoritative; do not ask again what to change): %q.", n)
+			}
 		}
 		if reSlug.MatchString(in.Slug) {
 			t += fmt.Sprintf(" The change %q is already open on the current branch: continue it and do not create another. If you do not yet know what the analyst wants to change, ask them with `sdkit ui ask` first.", in.Slug)
 		}
 		return t, nil
+	case "generate-design":
+		return fmt.Sprintf("Use the generate-design skill for the spec id %q. The analyst chose to make the design now: do not ask whether the feature needs a user interface.", id), nil
 	case "merge-specs":
 		return fmt.Sprintf("Use the merge-specs skill for the spec id %q. If `sdkit spec drift` and `sdkit spec check` find nothing to merge, say so in one sentence and stop.", id), nil
 	case "generate-tasks":

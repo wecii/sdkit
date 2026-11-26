@@ -81,6 +81,7 @@ func CheckParent(ctx context.Context, c *http.Client, base, user, token, key str
 type TaskInput struct {
 	Parent string
 	SHA    string
+	Note   string // what the analyst wrote they want changed (update-specs, refine-specs); theirs, so the agent asks nothing more about it
 	Slug   string // an open change on the current branch; filled by the server from git, never by the page
 }
 

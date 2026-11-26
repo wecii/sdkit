@@ -2,8 +2,8 @@ import { QuestionItem, RunEvent } from './protocol';
 import { Step } from './steps';
 
 /**
- * The run page in the middle of the window: a Markdown document that VS Code's own preview draws and redraws as the run goes. Pure,
- * so what the person reads is tested without VS Code. The preview is view-only; questions are answered in the QuickPick above it.
+ * The run page in the middle of the window: a webview (runpage.ts) that draws the model below and is redrawn as the run goes. The
+ * model is pure, so what the person reads is tested without VS Code. The page is view-only; questions are answered in the QuickPick above it.
  */
 export type Entry =
   | { kind: 'agent'; text: string }
@@ -14,13 +14,42 @@ export type Entry =
 /** One thing the agent was seen doing: what a person can follow, never a raw command. */
 export interface Activity { label: string; at: number }
 
+/** One line of the full conversation. A tool call carries what it printed back, so the page can fold it away. */
+export type LogItem =
+  | { kind: 'agent' | 'thought' | 'note'; text: string }
+  | { kind: 'tool'; name: string; text: string; output?: string }
+  | { kind: 'question'; text: string; answer?: string }
+  | { kind: 'end'; text: string; failed: boolean };
+
+export const MAX_LOG = 1500;
+
+/** Append to the full conversation; the oldest lines go first, a long run must not grow the extension without bound. */
+export function pushLog(p: Page, item: LogItem): void {
+  const l = (p.log ??= []);
+  l.push(item);
+  if (l.length > MAX_LOG) l.splice(0, l.length - MAX_LOG);
+}
+
+/** A tool's output belongs to the call before it. */
+export function attachOutput(p: Page, text: string): void {
+  const last = p.log?.[p.log.length - 1];
+  if (last?.kind === 'tool' && last.output === undefined) last.output = text;
+  else pushLog(p, { kind: 'note', text });
+}
+
 export interface Page {
   id: string;
   title: string; // what the run does, in plain words
   steps: Step[];
   entries: Entry[];
   running: boolean;
+  /** the action this page runs, so "Devam et" can start it again */
+  action?: string;
+  /** the person pressed stop: the end is theirs, not a failure */
+  stopped?: boolean;
   startedAt?: number;
+  /** everything the agent said and did, in order, for the "Tam konuşma" tab; capped */
+  log?: LogItem[];
   /** newest last; the agent can work for minutes between two messages, and this is what shows it is alive */
   activity?: Activity[];
 }
@@ -63,85 +92,73 @@ const ACTION_TITLES: Record<string, string> = {
 };
 export const actionTitle = (a: string) => ACTION_TITLES[a] ?? a;
 
-const stepIcon = (s: Step) => (s.state === 'done' ? '✅' : s.state === 'started' ? '🔄' : '⚪');
+export type Tone = 'run' | 'wait' | 'done' | 'fail' | 'idle';
 
-/** Text from outside (the agent, the question) must not break the page's own structure: no raw HTML, no heading of its own. */
-export function quote(text: string): string {
-  return text
-    .replace(/</g, '&lt;')
-    .split('\n')
-    .map(l => '> ' + l)
-    .join('\n');
+/** The box at the top, so the one thing that matters is seen without scrolling: a question waiting, the end, or what the agent does now. */
+export interface Status {
+  tone: Tone;
+  head: string;
+  /** the agent's last message, first lines */
+  detail?: string;
+  /** "Süre: 4 dk 12 sn" */
+  elapsed?: string;
+  /** "Komut çalıştırılıyor · 3 sn önce" */
+  now?: string;
+  earlier?: string[];
 }
 
-export function render(p: Page, now = Date.now()): string {
-  const out: string[] = [`# ${p.id} · ${p.title}`, ''];
-  if (p.steps.length) {
-    out.push(p.steps.map(s => `${stepIcon(s)} ${s.n}. ${s.name}`).join('  \n'), '');
-  }
-  out.push('---', '', '## Şu an', '', status(p, now), '', '---', '', '## Konuşma', '');
-  if (!p.entries.length) out.push('_Ajan başlıyor…_', '');
-  for (const e of p.entries) out.push(entry(e), '');
-  return out.join('\n');
+export interface View {
+  id: string;
+  title: string;
+  running: boolean;
+  /** ended without finishing (stopped or failed): the run can be continued */
+  resumable: boolean;
+  steps: Step[];
+  /** done steps over all steps, 0..100 */
+  percent: number;
+  status: Status;
+  entries: Entry[];
+  log: LogItem[];
 }
 
-/** The box at the top, so the one thing that matters is seen without scrolling: a question waiting, the end, or the last message. */
-function status(p: Page, now: number): string {
+export function view(p: Page, now = Date.now()): View {
+  const done = p.steps.filter(s => s.state === 'done').length;
+  return {
+    id: p.id,
+    title: p.title,
+    running: p.running,
+    resumable: !p.running && !!p.action && (!!p.stopped || p.entries.some(e => e.kind === 'end' && e.failed)),
+    steps: p.steps,
+    percent: p.steps.length ? Math.round((done / p.steps.length) * 100) : 0,
+    status: status(p, now),
+    entries: p.entries,
+    log: p.log ?? [],
+  };
+}
+
+function status(p: Page, now: number): Status {
   const waiting = [...p.entries].reverse().find(e => e.kind === 'question' && !e.answers) as Extract<Entry, { kind: 'question' }> | undefined;
   if (waiting) {
-    const hint = waiting.dismissed ? 'Seçim kutusu kapandı: alttaki durum çubuğunda **SDKit: cevabınız bekleniyor** yazısına tıklayın.' : 'Pencerenin üstündeki seçim kutusundan cevaplayın.';
-    return `❓ **Cevabınız bekleniyor.** ${hint}`;
+    const hint = waiting.dismissed ? 'Seçim kutusu kapandı: alttaki durum çubuğunda "SDKit: cevabınız bekleniyor" yazısına tıklayın.' : 'Pencerenin üstündeki seçim kutusundan cevaplayın.';
+    return { tone: 'wait', head: 'Cevabınız bekleniyor', detail: hint };
   }
+  if (p.stopped && !p.running) return { tone: 'idle', head: 'Durduruldu', detail: '"Devam et" ile kaldığı yerden sürdürebilirsiniz.' };
   const end = p.entries.find(e => e.kind === 'end') as Extract<Entry, { kind: 'end' }> | undefined;
-  if (end) return end.failed ? `❌ **Çalışma tamamlanamadı.** ${end.text ?? ''}`.trim() : '✅ **Çalışma bitti.**';
+  if (end) return end.failed ? { tone: 'fail', head: 'Çalışma tamamlanamadı', detail: end.text } : { tone: 'done', head: 'Çalışma bitti' };
   const last = [...p.entries].reverse().find(e => e.kind === 'agent') as Extract<Entry, { kind: 'agent' }> | undefined;
   const cur = p.steps.find(s => s.state === 'started');
-  const head = p.running ? `🔄 **Ajan çalışıyor${cur ? `: ${cur.name}` : ''}.**` : '⏸ **Durdu.**';
-  const parts = [head];
-  if (p.running) parts.push(progress(p, now));
-  if (last) parts.push(quote(firstLines(last.text, 4)));
-  return parts.filter(Boolean).join('\n\n');
-}
-
-/** Time and the latest moves: a quiet agent is still seen working, and how long it has been quiet is plain. */
-function progress(p: Page, now: number): string {
-  const head: string[] = [];
-  if (p.startedAt !== undefined) head.push(`⏱ Süre: ${duration(now - p.startedAt)}`);
-  const a = p.activity ?? [];
-  if (!a.length) head.push('⚙️ Ajan hazırlanıyor…');
-  else head.push(`⚙️ Şimdi: ${a[a.length - 1].label} · ${duration(now - a[a.length - 1].at)} önce`);
-  const earlier = a.slice(0, -1).reverse().map(x => `- ${x.label}`);
-  return [head.join('  \n'), ...(earlier.length ? ['_Son hareketler:_\n' + earlier.join('\n')] : [])].join('\n\n');
+  const s: Status = { tone: p.running ? 'run' : 'idle', head: p.running ? `Ajan çalışıyor${cur ? `: ${cur.name}` : ''}` : 'Durdu' };
+  if (p.running) {
+    if (p.startedAt !== undefined) s.elapsed = `Süre: ${duration(now - p.startedAt)}`;
+    const a = p.activity ?? [];
+    s.now = a.length ? `${a[a.length - 1].label} · ${duration(now - a[a.length - 1].at)} önce` : 'Ajan hazırlanıyor…';
+    if (a.length > 1) s.earlier = a.slice(0, -1).reverse().map(x => x.label);
+  }
+  if (last) s.detail = firstLines(last.text, 4);
+  return s;
 }
 
 function firstLines(t: string, n: number): string {
   const l = t.trim().split('\n');
   return l.length > n ? l.slice(0, n).join('\n') + '\n…' : t.trim();
 }
-
-function entry(e: Entry): string {
-  switch (e.kind) {
-    case 'agent':
-      return `**🤖 Ajan**\n\n${quote(e.text.trim())}`;
-    case 'note':
-      return `_${e.text.replace(/[_<]/g, ' ')}_`;
-    case 'end':
-      return e.failed ? `**❌ Tamamlanamadı.** ${e.text ?? ''}`.trim() : '**✅ Bitti.**';
-    case 'question': {
-      const lines = [`**❓ ${e.items.length > 1 ? `${e.items.length} soru` : 'Soru'}**`, ''];
-      for (const q of e.items) {
-        lines.push(`- **${q.question.replace(/</g, '&lt;')}**`);
-        if (q.finding) {
-          const f = q.finding;
-          lines.push(`  - Bulgu ${f.id ?? ''} · ${f.severity ?? ''} · ${f.where ?? ''}`.trimEnd(), `  - ${f.problem ?? ''}`);
-        }
-        const a = e.answers?.[q.question];
-        lines.push(e.answers ? `  - 🙋 **Siz:** ${a ? a.replace(/</g, '&lt;') : '_(boş bıraktınız)_'}` : '  - _cevap bekleniyor_');
-      }
-      return lines.join('\n');
-    }
-  }
-}
-
-/** The address of a run's page; one page per spec, so starting the same spec again reuses its tab. */
-export const pagePath = (id: string) => `/${id}.md`;

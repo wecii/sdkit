@@ -53,10 +53,10 @@ func TestActions(t *testing.T) {
 	}{
 		{"no-input", false, ""},
 		{"draft", false, "generate-specs"},
-		{"unpublished", false, "generate-specs"},
-		{"awaiting", false, "update-specs,update-manual"},
-		{"approved", false, "start-change,edit-change,generate-tasks,merge-specs"},
-		{"approved", true, "start-change,edit-change,update-manual,generate-tasks,merge-specs"},
+		{"unpublished", false, "generate-specs,refine-specs"},
+		{"awaiting", false, "update-specs,update-manual,generate-design"},
+		{"approved", false, "start-change,edit-change,generate-design,generate-tasks,merge-specs"},
+		{"approved", true, "start-change,edit-change,update-manual,generate-design,generate-tasks,merge-specs"},
 	}
 	for _, c := range cases {
 		if got := keys(c.state, c.open); got != c.want {

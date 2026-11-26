@@ -84,11 +84,15 @@ func Actions(state string, openChange bool) []ActionItem {
 	case spec.StateNew, spec.StateDraft, spec.StateOutput:
 		return []ActionItem{{"generate-specs", "Devam et", "Eksik noktaları soracağım, taslağı hazırlayıp gözden geçireceğim.", true}}
 	case spec.StateUnpublished:
-		return []ActionItem{{"generate-specs", "PR'a gönder", "Review geçti. Spec kendi dalına gönderilir ve PR açılır.", true}}
+		return []ActionItem{
+			{"generate-specs", "PR'a gönder", "Review geçti. Göndermeden önce son bir kez sorulur; elle düzelttiyseniz review'u yeniden çalışır.", true},
+			{"refine-specs", "Spec'i güncelle", "Ne değişeceğini yazarsınız, ajan en küçük düzeltmeyi yapar ve review eder; sonra göndermeden önce tekrar sorar. Dosyaları kendiniz düzenlediyseniz doğrudan \"PR'a gönder\" yeterli.", false},
+		}
 	case spec.StateAwaiting:
 		return []ActionItem{
-			{"update-specs", "Tech Lead isteklerini işle", "PR'daki yorumları okur, ilgili yerleri düzeltir, review eder ve aynı PR'ı günceller.", true},
+			{"update-specs", "Spec'i güncelle", "Tech Lead'in PR yorumlarını okur ve/veya sizden ne değişeceğini sorar; ilgili yerleri düzeltir, review eder, aynı PR'ı günceller.", true},
 			{"update-manual", "Elle düzelttim, devam et", "Dosyaları kendiniz düzelttiyseniz: farkı esas alır, review eder, PR'ı günceller.", false},
+			{"generate-design", "Tasarım üret", "Spec'ten BPMN süreç akışı üretir ve aynı PR'a ekler.", false},
 		}
 	case spec.StateApproved:
 		a := []ActionItem{
@@ -99,6 +103,7 @@ func Actions(state string, openChange bool) []ActionItem {
 			a = append(a, ActionItem{"update-manual", "Elle düzelttim, devam et", "Açık değişikliğin farkını esas alır, review eder, PR açar.", false})
 		}
 		return append(a,
+			ActionItem{"generate-design", "Tasarım üret", "Onaylı spec'ten BPMN süreç akışı üretir.", false},
 			ActionItem{"generate-tasks", "Task üret", "Onaylı sürümden Jira task'ları üretir.", false},
 			ActionItem{"merge-specs", "Birleştir", "Aynı sürüm üzerinde yazılmış değişiklikleri tek revizyonda birleştirir.", false})
 	}
