@@ -3,7 +3,7 @@
   "displayName": "Spec-Driven Kit",
   "description": "Write, review and publish specs with an AI agent, without a terminal.",
   "publisher": "sdkit",
-  "version": "3.0.1",
+  "version": "3.0.2",
   "license": "MIT",
   "engines": {
     "vscode": "^1.90.0"

@@ -23,6 +23,10 @@ To see whether you are up to date: `<project-dir>/.scaffold-version` is the kit 
 
 There is no `<kit>/bin/upgrade.sh` any more: the kit is one binary and a checkout of it is not needed.
 
+## 3.0.1 -> 3.0.2: a management page in the VS Code extension
+
+No manual step. The extension's middle page is now a place to work from, not only to watch: the specs as cards, a spec's page with its flow, the actions its stage allows and its files, and the run with a stepper, a status card, and a second tab with the agent's whole conversation (reasoning, every tool call and its output, folded). A run can be stopped and continued (or restarted fresh) from the page. "Spec'i güncelle" asks what to change (or takes the edited files / the PR comments when left empty), and works before the PR as well as after it; before the spec goes to the Tech Lead, `generate-specs` now asks once whether to send it, edit it first or have the agent change it. The design question is its own, visible last step (`Step n/10`), and "Tasarım üret" is a button on a spec. `sdkit ext run` takes `--note <text>`. Use this `sdkit` with this extension (`brew upgrade sdkit`). Also in: `tasks.md` split by role and Jira tasks drafted from it, and `business-requirements.md` ([guide.md](guide.md)).
+
 ## 3.0.0 -> 3.0.1: one pull request for spec and design
 
 No manual step. `generate-design` run right after `generate-specs` now puts `designs/<id>/` on the spec's own branch, so the spec's pull request carries both and the Tech Lead reviews one PR; made alone or after the spec is merged it still opens `design/<id>` with its own PR. In the VS Code extension the run page shows what the agent is doing and for how long between its messages, and a spec's Dosyalar can be opened from the Specs list and in the spec's own folder (see [design-vscode.md](design-vscode.md)); `sdkit spec branch` says where a spec's folder is when its branch is open in another one.

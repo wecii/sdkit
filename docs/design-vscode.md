@@ -18,7 +18,7 @@ Extension: **Spec-Driven Kit**, id `sdkit.sdkit`, in `editors/vscode/`. Audience
 
 VS Code ships its own Claude and Codex agent SDKs and an Agents window, but (checked on 1.147.0, 2026-11) its extension points (`agentSessionsWorkspace`, `agentsWindowConfiguration`, the chat session providers) are proposed APIs, which a Marketplace extension cannot use, and the stable `vscode.d.ts` (1.146) has only chat participants. On the analyst's machine the window offered Copilot only, with no way to add Claude. So the extension runs its own headless session and draws it with native parts. Look again when the window opens to third-party providers.
 
-## The protocol: `sdkit ext run <action> <id>`
+## The protocol: `sdkit ext run <action> <id> [--fresh] [--note <text>]`
 
 No server. One JSON line per message on the standard streams (`internal/ext/run.go` is the source of truth):
 
