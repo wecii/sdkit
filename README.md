@@ -340,7 +340,7 @@ More in [docs/developer-workflow.md](docs/developer-workflow.md) §7 and the one
 
 Your session is the *orchestrator*. It hands narrow jobs to *roles*, each run as a fresh agent. Roles declare a cost tier, never a model name. The `orchestrator` is not an agent file: it is your own session, playing the role defined in `core/roles/orchestrator.md`.
 
-Nine skills and thirteen roles ship in this version.
+Nine skills and fourteen roles ship in this version.
 
 ### Roles
 
@@ -353,6 +353,7 @@ Nine skills and thirteen roles ship in this version.
 | `verifier` | Medium/high: checks the diff against the DoD. Read-only |
 | `reviewer`, `security-auditor` | Required at high (security-auditor also for pipeline/infra). Read-only |
 | `spec-reviewer` | Analyst environment: reviews a PRD, ADR or feature spec against a rubric. Read-only |
+| `requirements-writer` | Analyst environment: writes and refreshes `business-requirements.md`, a derived view of the spec that developers, analysts, customers and PMs can all read. Edits that one file only |
 | `flow-modeler` | Analyst environment: models a published spec as lanes, steps and decisions (the input of `sdkit design build`, which makes the BPMN 2.0 file) so a designer gets a first picture before the real UI design. Edits its one model file only |
 | `prespec-gaps` | Analyst environment: scans a pre-spec before any draft and lists every open point as decision, fact or default, so the analyst answers once. Read-only, light tier |
 

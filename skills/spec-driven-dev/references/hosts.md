@@ -4,7 +4,7 @@ The workflow is written host-neutral. This table says how each primitive is done
 
 | Primitive | Claude Code | Codex | OpenCode | Cursor | Gemini CLI | Anything else |
 |---|---|---|---|---|---|---|
-| Ask the user | `AskUserQuestion` (max 4 per call) | numbered question, wait for the reply | same as Codex | same | same | same |
+| Ask the user | `AskUserQuestion` (max 4 questions per call and 4 options per question; split a longer list over several questions of four options each, not into "Other") | numbered question, wait for the reply | same as Codex | same | same | same |
 | Run a role | `Agent` tool, `subagent_type: "spec-driven-kit:<role>"` (plugin) or `"<role>"` (copy). Never `fork` | ask Codex to spawn the subagent role `<role>` (`.codex/config.toml`) | `@<role>` or the task tool; agents in `.opencode/agents` | subagent `<role>` from `.cursor/agents` | `@<role>`; agents in `.gemini/agents` | play the role in the main session using only the handoff inputs |
 | Parallel roles | several `Agent` calls in one message | spawn several subagents | several task calls | several subagents | several `@` calls | sequential, or separate processes in worktrees |
 | Guards | hooks (`hooks/hooks.json`) | git hooks (`.githooks`) | plugin `.opencode/plugins` + git hooks | `.cursor/hooks.json` via `sdkit hook --host <host>` + git hooks | `.gemini/settings.json` via `sdkit hook --host <host>` + git hooks | git hooks and CI |

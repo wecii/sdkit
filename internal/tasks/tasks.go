@@ -26,6 +26,8 @@ type Task struct {
 	Area       string   `json:"area"`      // role subtask: the one role that does it (one of Roles)
 	Of         string   `json:"of"`        // role subtask: ref of the group task it belongs to; a group task and a legacy task have none
 	BlockedBy  []string `json:"blockedBy"` // gates (open questions) the task waits for; shown as "Blocked: ..." in its summary
+	Steps      []string `json:"steps"`     // ids of the tasks.md lines this task does; their text is read from the spec at the SHA
+	Include    []string `json:"include"`   // optional description sections: acs, after, source (default none)
 	ExternalID string   `json:"-"`
 	Key        string   `json:"-"`
 }

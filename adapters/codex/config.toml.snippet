@@ -28,6 +28,10 @@ config_file = "agents/flow-modeler.toml"
 description = "Read-only scan of a pre-spec before any draft exists; lists every open point as a decision, a fact or a default so the analyst answers once, up front. Analyst environment (generate-specs step 2)."
 config_file = "agents/prespec-gaps.toml"
 
+[agents.requirements-writer]
+description = "Writes and refreshes business-requirements.md, the document that brings developers, analysts, customers and PMs together, as a derived view of the published spec (proposal, design, specs, tasks). Analyst environment; use it only from generate-specs, update-specs and merge-specs."
+config_file = "agents/requirements-writer.toml"
+
 [agents.reviewer]
 description = "Read-only code reviewer. Reviews a diff against the project's rules and known pitfalls and reports violations. Use for a second opinion before a PR; it never edits code."
 config_file = "agents/reviewer.toml"

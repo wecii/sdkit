@@ -1,0 +1,15 @@
+[frontend] Giriş formunu kodla
+
+Kullanıcılar e-posta ve parola ile giriş yapabilmeli.
+
+Yapılacaklar:
+- Giriş formunu ve kilit mesajını kodla
+
+Bitti sayılır:
+- AC-login-1 · Giriş formu: form gönderilir
+- AC-login-3 · Hesap kilidi: 5 hatalı denemeden sonra hesap 15 dakika kilitlenir
+
+Önce bitmesi gerekenler:
+- PROJ-14 · [ui] Giriş formunu tasarla
+
+Kaynak: specs/login v1.0 (4e11e82)

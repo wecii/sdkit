@@ -241,7 +241,9 @@ func Label(ext string) string {
 	}, ext)
 }
 
-// APIDesc is the description as a REST body value: plain text on API v2, Atlassian Document Format on v3.
+// APIDesc is the description as a REST body value: plain text on API v2 (where "- " already makes a list), Atlassian Document Format
+// on v3. In ADF a block of "- " lines becomes a bullet list and a short line ending in ":" a bold label, so the sections of a task
+// description read as sections; the fenced sdkit-task block stays one code block, verbatim.
 func APIDesc(text, version string) any {
 	if version != "3" {
 		return text
@@ -250,12 +252,36 @@ func APIDesc(text, version string) any {
 	if code != "" {
 		code = "```sdkit-" + code
 	}
+	para := func(l string, marks ...any) map[string]any {
+		t := map[string]any{"type": "text", "text": l}
+		if len(marks) > 0 {
+			t["marks"] = marks
+		}
+		return map[string]any{"type": "paragraph", "content": []any{t}}
+	}
 	content := []any{}
-	for _, l := range strings.Split(note, "\n") {
-		if strings.TrimSpace(l) != "" {
-			content = append(content, map[string]any{"type": "paragraph", "content": []any{map[string]any{"type": "text", "text": l}}})
+	var items []any
+	flush := func() {
+		if len(items) > 0 {
+			content = append(content, map[string]any{"type": "bulletList", "content": items})
+			items = nil
 		}
 	}
+	for _, l := range strings.Split(note, "\n") {
+		switch {
+		case strings.TrimSpace(l) == "":
+			flush()
+		case strings.HasPrefix(l, "- "):
+			items = append(items, map[string]any{"type": "listItem", "content": []any{para(strings.TrimPrefix(l, "- "))}})
+		case strings.HasSuffix(l, ":") && len([]rune(l)) <= 40 && !strings.HasPrefix(l, "Blocked"):
+			flush()
+			content = append(content, para(l, map[string]any{"type": "strong"}))
+		default:
+			flush()
+			content = append(content, para(l))
+		}
+	}
+	flush()
 	if code != "" {
 		content = append(content, map[string]any{"type": "codeBlock", "content": []any{map[string]any{"type": "text", "text": strings.TrimSuffix(code, "\n")}}})
 	}

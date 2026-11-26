@@ -32,6 +32,13 @@ type Upsert struct {
 // Render builds the upsert of one ref. keys maps externalId to a Jira key; an unmapped
 // dependency stays its externalId. ok is false for an unknown ref.
 func (d *Doc) Render(ref string, keys map[string]string) (u Upsert, ok bool) {
+	u, ok, _ = d.RenderWith(ref, keys, nil, "")
+	return u, ok
+}
+
+// RenderWith is Render with the spec text a description quotes (steps, optional sections); sp nil renders the summary alone. The
+// error is a step or AC the spec does not have.
+func (d *Doc) RenderWith(ref string, keys map[string]string, sp *SpecText, lang string) (u Upsert, ok bool, err error) {
 	var t *Task
 	byRef := map[string]string{}
 	group := map[string]bool{}
@@ -45,13 +52,17 @@ func (d *Doc) Render(ref string, keys map[string]string) (u Upsert, ok bool) {
 		}
 	}
 	if t == nil {
-		return u, false
+		return u, false, nil
 	}
 	u.Contract = Contract{ExternalID: t.ExternalID, SpecID: d.SpecID, SpecVersion: d.SpecVersion, SpecSha: d.SpecSha, ACs: t.ACs,
-		Risk: t.Risk, Dependencies: []string{}, Scope: t.Scope, Area: t.Area, Group: group[t.Ref]}
-	u.Description = Str(t.Summary)
-	if len(t.BlockedBy) > 0 {
-		u.Description = "Blocked: " + strings.Join(t.BlockedBy, ", ") + "\n\n" + u.Description
+		Risk: riskOf(d, t), Dependencies: []string{}, Scope: t.Scope, Area: t.Area, Group: group[t.Ref]}
+	if sp == nil && len(t.Steps) == 0 && len(t.Include) == 0 {
+		u.Description = Str(t.Summary)
+		if len(t.BlockedBy) > 0 {
+			u.Description = "Blocked: " + strings.Join(t.BlockedBy, ", ") + "\n\n" + u.Description
+		}
+	} else if u.Description, err = d.describe(*t, keys, sp, lang); err != nil {
+		return u, true, err
 	}
 	if p, _ := d.Parent.(string); p != "" {
 		u.Parent = p
@@ -80,7 +91,7 @@ func (d *Doc) Render(ref string, keys map[string]string) (u Upsert, ok bool) {
 			u.Dependencies = append(u.Dependencies, e)
 		}
 	}
-	return u, true
+	return u, true, nil
 }
 
 // Text is the Jira description: the summary text and the fenced sdkit-task block.
@@ -163,4 +174,18 @@ func dash(s string) string {
 		return "-"
 	}
 	return s
+}
+
+// riskOf is the task's own risk label; a role subtask without one takes its group's, because the risk belongs to the behaviour and
+// every task of the contract carries one.
+func riskOf(d *Doc, t *Task) any {
+	if Str(t.Risk) != "" || t.Of == "" {
+		return t.Risk
+	}
+	for _, g := range d.Tasks {
+		if g.Ref == t.Of {
+			return g.Risk
+		}
+	}
+	return t.Risk
 }

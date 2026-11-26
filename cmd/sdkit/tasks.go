@@ -53,7 +53,7 @@ func runTasks(args []string) int {
 	}
 	md, _ := os.ReadFile(filepath.Join(pj.Dir(), "project.md"))
 	return tasks.Run(tasks.Env{
-		Plan: plan, Project: string(md),
+		Plan: plan, Project: string(md), Lang: st.String("ANALYST_LANGUAGE"),
 		Repo:     repo,
 		SpecPath: os.Getenv("TASKS_SPEC_PATH"),
 		Approve: func(id, sha string) bool {

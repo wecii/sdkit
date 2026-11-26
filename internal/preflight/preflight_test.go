@@ -58,3 +58,27 @@ func TestSpecPublishFindsEveryCauseAtOnce(t *testing.T) {
 		t.Errorf("a token in sdkit.local.env must be seen:\n%s", out)
 	}
 }
+
+// A first publish needs business-requirements.md; a spec published before it existed is not asked for it.
+func TestSpecPublishNeedsBusinessRequirements(t *testing.T) {
+	repo := testutil.TempRepo(t)
+	_ = os.MkdirAll(filepath.Join(repo, ".sdkit"), 0o755)
+	_ = os.WriteFile(filepath.Join(repo, ".sdkit", "sdkit.env"), []byte("ANALYST_LANGUAGE=en\n"), 0o644)
+	dir := filepath.Join(repo, "specs", "x")
+	_ = os.MkdirAll(dir, 0o755)
+	_ = os.WriteFile(filepath.Join(dir, "proposal.md"), []byte("p"), 0o644)
+	run := func() string {
+		var sb strings.Builder
+		for _, l := range SpecPublish(Opts{Root: repo, Offline: true, Getenv: func(string) string { return "" }}, "x") {
+			sb.WriteString(l.String() + "\n")
+		}
+		return sb.String()
+	}
+	if !strings.Contains(run(), "business-requirements.md does not exist") {
+		t.Error("a spec never published needs the file")
+	}
+	_ = os.WriteFile(filepath.Join(dir, "spec.meta.json"), []byte(`{"history":[{"version":"0.1"}]}`), 0o644)
+	if strings.Contains(run(), "business-requirements.md") {
+		t.Error("a spec published before the file existed is not asked for it")
+	}
+}

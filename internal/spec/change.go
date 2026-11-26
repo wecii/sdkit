@@ -19,6 +19,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/wecii/sdkit/internal/lint"
 )
 
 func longest(expr string) *regexp.Regexp {
@@ -655,6 +657,9 @@ func Coverage(root, idsBefore string) ([]string, error) {
 		}
 		sl, tc := filepath.Base(c), strList(field(cjs[c], "touches"))
 		tk, _ := os.ReadFile(filepath.Join(c, "tasks.md"))
+		for _, p := range lint.CheckTasksMD(sl+"/tasks.md", string(tk), lint.PickedRoles(root)) {
+			probs = append(probs, fmt.Sprintf("%s: %s", sl, strings.TrimPrefix(p.String(), "lint: error ")))
+		}
 		for _, a := range d.ACs {
 			if !has(tc, a.ID) {
 				continue

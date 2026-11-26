@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/wecii/sdkit/internal/gitx"
+	"github.com/wecii/sdkit/internal/lint"
 )
 
 // Exit codes: 0 ok, 1 check failed, 2 usage, 3 not approved / spec unreadable, 4 task contract invalid.
@@ -32,6 +33,7 @@ type Env struct {
 	Validate func(text string) (string, bool)
 	Plan     PlanCfg // size rules for plan-check
 	Project  string  // text of project.md (the risk rubric)
+	Lang     string  // ANALYST_LANGUAGE: the language of the labels in a Jira description (tr, en)
 	Stdin    io.Reader
 	Out, Err io.Writer
 }
@@ -43,7 +45,7 @@ type runner struct {
 
 var sha40 = regexp.MustCompile(`^[0-9a-f]{40}$`)
 
-const usage = "usage: sdkit tasks acs|changes|roles|trace|cycles|ids|order|plan-check|regroup|render|report <tasks.json> ..."
+const usage = "usage: sdkit tasks acs|changes|roles|outline|trace|cycles|ids|order|plan-check|regroup|render|report <tasks.json> ..."
 
 // Run executes `sdkit tasks <verb> <tasks.json> ...` and returns the exit code.
 func Run(env Env, args []string) int {
@@ -69,7 +71,7 @@ func Run(env Env, args []string) int {
 		return die(exitUsage, "%v", err)
 	}
 	d := r.doc
-	if !strings.Contains(" acs changes roles trace cycles ids order plan-check regroup render report ", " "+verb+" ") {
+	if !strings.Contains(" acs changes roles outline trace cycles ids order plan-check regroup render report ", " "+verb+" ") {
 		return die(exitUsage, "unknown verb %s", verb)
 	}
 	if verb != "cycles" && verb != "regroup" {
@@ -82,6 +84,40 @@ func Run(env Env, args []string) int {
 		return r.cycles(true)
 	case "roles":
 		fmt.Fprint(r.Out, lines(r.roles()))
+	case "outline":
+		// outline <tasks.json> [--revision] [--out FILE]: draft the group tasks and role subtasks from the role structure of tasks.md at the SHA
+		rev, out := false, ""
+		for i := 0; i < len(rest); i++ {
+			switch {
+			case rest[i] == "--revision":
+				rev = true
+			case rest[i] == "--out" && i+1 < len(rest):
+				out, i = rest[i+1], i+1
+			default:
+				fmt.Fprintln(r.Err, "tasks: usage: outline <tasks.json> [--revision] [--out FILE]")
+				return exitUsage
+			}
+		}
+		text := r.show(r.dir() + "/tasks.md")
+		td := lint.ParseTasks(text)
+		if strings.TrimSpace(text) == "" || !hasRoleSection(td) {
+			return die(exitFail, "tasks.md at %s has no role headings (a spec made before roles): derive the tasks by hand", d.SpecSha)
+		}
+		var changes []string
+		if rev {
+			if changes = r.revChanges(); len(changes) == 0 {
+				return die(exitFail, "no change was applied in this revision: outline without --revision")
+			}
+		}
+		ot := Outline(td, changes)
+		if len(ot) == 0 {
+			return die(exitFail, "tasks.md has no feature to outline")
+		}
+		if out == "" {
+			fmt.Fprint(r.Out, string(outlineJSON(d, ot)))
+		} else if err := os.WriteFile(out, outlineJSON(d, ot), 0o644); err != nil {
+			return die(exitFail, "cannot write %s", out)
+		}
 	case "changes":
 		fmt.Fprint(r.Out, lines(r.revChanges()))
 	case "acs":
@@ -180,6 +216,7 @@ func Run(env Env, args []string) int {
 		}
 	case "plan-check":
 		adv := d.PlanCheck(r.Plan, GateMarkers(r.text(false), r.Plan.MarkerWords), r.Project, r.roles())
+		adv = append(adv, d.DescribeAdvice(r.specText())...)
 		code := 0
 		for _, a := range adv {
 			tag := "warn"
@@ -402,10 +439,14 @@ func (r *runner) render(rest []string) int {
 		fmt.Fprintln(r.Err, err)
 		return exitFail
 	}
-	u, ok := r.doc.Render(ref, m)
+	u, ok, err := r.doc.RenderWith(ref, m, r.specText(), r.Lang)
 	if !ok {
 		fmt.Fprintf(r.Err, "tasks: no task with ref %s\n", ref)
 		return exitUsage
+	}
+	if err != nil {
+		fmt.Fprintf(r.Err, "tasks: %v\n", err)
+		return exitFail
 	}
 	text := strings.TrimRight(u.Text(), "\n") // the bash held it in $(...), which drops the trailing newline
 	if r.Validate != nil {
@@ -463,4 +504,23 @@ func (r *runner) report(rest []string) int {
 		return exitFail
 	}
 	return 0
+}
+
+func hasRoleSection(d *lint.TasksDoc) bool {
+	for _, f := range d.Features {
+		if len(f.Sections) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// specText is what a description quotes from the spec at the pinned SHA: the AC titles and THEN lines, the lines of tasks.md.
+func (r *runner) specText() *SpecText {
+	meta := struct {
+		Version string `json:"version"`
+	}{}
+	_ = json.Unmarshal([]byte(r.show(r.dir()+"/spec.meta.json")), &meta)
+	return &SpecText{Path: r.dir(), Version: meta.Version, Sha: r.doc.SpecSha,
+		ACs: ParseACTexts(r.text(false)), Steps: StepTexts(r.show(r.dir() + "/tasks.md"))}
 }

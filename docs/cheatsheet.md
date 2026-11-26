@@ -44,7 +44,7 @@ The analyst proposes the label, **you confirm it**. Ticket priority does not set
 ## Roles
 
 `orchestrator` (main session) · `analyst` is anything missing? · `scout` cheap lookup · `engineer` design and test strategy · `developer` code · `test-writer` tests ·
-`flow-modeler` process model of a spec (analyst env) · `devsecops` pipeline/infrastructure · `reviewer` / `security-auditor` / `spec-reviewer` (spec documents) / `verifier` independent and read-only (`verifier-deep` at `high` risk, strong tier). The implementer never verifies.
+`flow-modeler` process model of a spec · `requirements-writer` business-requirements.md (analyst env) · `devsecops` pipeline/infrastructure · `reviewer` / `security-auditor` / `spec-reviewer` (spec documents) / `verifier` independent and read-only (`verifier-deep` at `high` risk, strong tier). The implementer never verifies.
 Roles do not call each other; if a lookup is needed they write `NEEDS-LOOKUP:` and the orchestrator runs `scout`.
 
 ## Hosts and stacks

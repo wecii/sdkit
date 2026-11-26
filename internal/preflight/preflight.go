@@ -143,6 +143,8 @@ func SpecPublish(o Opts, id string) []Line {
 	// the spec and its review
 	if st, err := os.Stat(filepath.Join(p.Root, spec.SpecsDir(p.set), id)); err != nil || !st.IsDir() {
 		p.add("FAIL", "%s/%s yok: önce propose adımı çalışmalı", "%s/%s does not exist: the propose step has to run first", spec.SpecsDir(p.set), id)
+	} else if p.firstPublishWithoutBR(id) {
+		p.add("FAIL", "%s/%s/business-requirements.md yok: ilk yayından önce requirements-writer ile yazılmalı (generate-specs adım 7)", "%s/%s/business-requirements.md does not exist: a spec's first publish needs it, written by the requirements-writer (generate-specs step 7)", spec.SpecsDir(p.set), id)
 	} else if r := review.Status(p.Root, id); !r.OK() {
 		p.add("FAIL", "taze bir review PASS yok: %s", "there is no fresh review PASS: %s", r.Reason)
 	} else {
@@ -245,3 +247,19 @@ func Tasks(o Opts, file string) []Line {
 var reCred = regexp.MustCompile(`(://)[^/@\s]+@`)
 
 func mask(s string) string { return reCred.ReplaceAllString(s, "${1}***@") }
+
+// firstPublishWithoutBR: a spec never published (no history in its meta) must carry business-requirements.md; one published before this
+// file existed is not asked for it.
+func (p *pf) firstPublishWithoutBR(id string) bool {
+	dir := filepath.Join(p.Root, spec.SpecsDir(p.set), id)
+	if _, err := os.Stat(filepath.Join(dir, "business-requirements.md")); err == nil {
+		return false
+	}
+	var m struct {
+		History []json.RawMessage `json:"history"`
+	}
+	if b, err := os.ReadFile(filepath.Join(dir, "spec.meta.json")); err == nil {
+		_ = json.Unmarshal(b, &m)
+	}
+	return len(m.History) == 0
+}

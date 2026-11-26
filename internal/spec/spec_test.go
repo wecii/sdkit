@@ -97,6 +97,24 @@ func TestNext(t *testing.T) {
 	if s := step(); s.Human || !strings.Contains(s.Action, "review round") || s.State != StateDraft {
 		t.Fatalf("%+v", s)
 	}
+	// the output exists but has no business-requirements.md: it is written before the output is reviewed
+	w("specs/x/proposal.md", "p")
+	if s := step(); !strings.Contains(s.Action, "business-requirements.md") || s.State != StateOutput {
+		t.Fatalf("the business requirements come before the output review: %+v", s)
+	}
+	w("specs/x/business-requirements.md", "<!-- sdkit: derived view -->\n")
+	if s := step(); strings.Contains(s.Action, "business-requirements.md") {
+		t.Fatalf("once written the review starts: %+v", s)
+	}
+	_ = os.RemoveAll(filepath.Join(root, "specs", "x"))
+	// `sdkit spec next <id>` itself: the verb was once unregistered and its branch read the wrong argument list
+	w("specs/n/proposal.md", "p")
+	t.Chdir(root)
+	var out, errw strings.Builder
+	if rc := RunSpec([]string{"next", "n"}, &out, &errw); rc != 0 || !strings.Contains(out.String(), "next (agent): write specs/n/business-requirements.md") {
+		t.Fatalf("spec next: rc=%d out=%q err=%q", rc, out.String(), errw.String())
+	}
+	_ = os.RemoveAll(filepath.Join(root, "specs", "n"))
 	// a draft and a pre-spec of the same id are one entry; a README and a stray directory name are not specs
 	w("prespec/README.md", "x")
 	w("specs/y/proposal.md", "p")

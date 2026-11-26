@@ -61,6 +61,8 @@ func Run(target string, cfg Config) ([]Problem, error) {
 	defs := acDefs(files, cfg)
 	ps = append(ps, checkACs(files, defs)...)
 	ps = append(ps, checkTasksCoverage(files, defs)...)
+	ps = append(ps, checkTaskRoles(files, target)...)
+	ps = append(ps, checkBusinessRequirements(files, defs)...)
 	if cfg.GatePrefix != "" {
 		ps = append(ps, checkGates(files, defs, cfg)...)
 	}
@@ -382,4 +384,48 @@ func ActiveACIDs(target string) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// BRMarker is what business-requirements.md carries on its first line: it says the file is a view of the spec, not a source.
+const BRMarker = "sdkit: derived view"
+
+// checkBusinessRequirements: a business-requirements.md (when the spec has one) must say it is a derived view and must account for
+// every active AC, so a reader of that one page misses nothing the spec requires. An AC it cites that the spec does not define is
+// already an ac-undefined error: every markdown file of the spec is read for that.
+func checkBusinessRequirements(files []file, defs map[string][]acDef) []Problem {
+	var f *file
+	for i := range files {
+		if files[i].rel == "business-requirements.md" {
+			f = &files[i]
+		}
+	}
+	if f == nil {
+		return nil
+	}
+	var ps []Problem
+	if !strings.Contains(strings.Join(f.lines[:min(3, len(f.lines))], "\n"), BRMarker) {
+		ps = append(ps, Problem{"error", "br-marker", f.rel, 1, "the first line must be the derived-view marker (" + BRMarker + " ...): this file is a view of the spec, the spec files win"})
+	}
+	mentioned := map[string]bool{}
+	for _, l := range f.lines {
+		for _, tok := range acRe.FindAllString(l, -1) {
+			for _, id := range expand(tok) {
+				mentioned[id] = true
+			}
+		}
+	}
+	var miss []string
+	for _, id := range sortedKeys(defs) {
+		if !mentioned[id] && !defs[id][0].withdrawn {
+			miss = append(miss, id)
+		}
+	}
+	if len(miss) > 0 {
+		more := ""
+		if len(miss) > 10 {
+			more, miss = fmt.Sprintf(" (+%d more)", len(miss)-10), miss[:10]
+		}
+		ps = append(ps, Problem{"error", "br-coverage", f.rel, 1, "business-requirements.md does not account for: " + strings.Join(miss, " ") + more})
+	}
+	return ps
 }

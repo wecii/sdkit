@@ -70,11 +70,16 @@ func Next(root, id string) Step {
 		}
 		return Step{Action: "propose: openspec-propose from the reviewed draft into " + out + " (copy work/decisions/" + id + ".md to " + out + "/decisions.md)", Why: "draft is PASS", State: StateDraft}
 	}
+	m := e.meta(id)
+	// a spec that was never published gets its business-requirements.md right after the proposal and before the output is reviewed, so the
+	// review and the hash cover it; a spec published earlier is not asked for it (update-specs refreshes one that exists)
+	if (!e.hasMeta(id) || len(m.History) == 0) && !exists(out+"/business-requirements.md") {
+		return Step{Action: "write " + out + "/business-requirements.md with the requirements-writer role (mode create; generate-specs references/business-requirements.md), then lint it", Why: "the output is complete only with it", State: StateOutput}
+	}
 	if s := round(id, out); s.Action != "" {
 		s.State = StateOutput
 		return s
 	}
-	m := e.meta(id)
 	switch {
 	case !e.hasMeta(id) || len(m.History) == 0:
 		return Step{Action: fmt.Sprintf("sdkit preflight spec-publish %s, then sdkit spec init-meta %s and sdkit spec publish %s --title ... --body-file ...", id, id, id), Why: "output is PASS, not published", State: StateUnpublished}

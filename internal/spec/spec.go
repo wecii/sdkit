@@ -534,7 +534,7 @@ func (e *env) dispatch(verb string, a []string) (rc int) {
 		return int(e.usage())
 	}
 	id, a := a[0], a[1:]
-	if !map[string]bool{"drift": true, "check": true, "apply": true, "init-meta": true, "hash": true, "status": true, "changed": true, "branch": true, "publish": true, "promote": true, "approved-sha": true}[verb] {
+	if !map[string]bool{"drift": true, "check": true, "apply": true, "init-meta": true, "hash": true, "status": true, "changed": true, "branch": true, "publish": true, "promote": true, "approved-sha": true, "next": true}[verb] {
 		return int(e.usage())
 	}
 	switch verb {
@@ -584,10 +584,7 @@ func (e *env) dispatch(verb string, a []string) (rc int) {
 		e.say("spec/%s", id)
 		return 0
 	case "next":
-		if len(a) != 1 || !okname(a[0]) {
-			return int(e.usage())
-		}
-		st := Next(e.root, a[0])
+		st := Next(e.root, id)
 		who := "agent"
 		if st.Human {
 			who = "person"

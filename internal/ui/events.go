@@ -125,7 +125,7 @@ func resultText(raw json.RawMessage) string {
 // stepNames are the plain-words names of a skill's steps, in the person's language. The banners themselves stay English because
 // other tools read them; a name the skill adds later falls back to the banner's own.
 var stepNames = map[string][]string{
-	"generate-specs": {"Girdiyi kontrol et", "Eksikleri sor", "Taslağı yaz", "Taslağı gözden geçir", "Bulguları çöz", "Spec'i oluştur", "Çıktıyı gözden geçir ve yayınla", "Sonucu göster"},
+	"generate-specs": {"Girdiyi kontrol et", "Eksikleri sor", "Taslağı yaz", "Taslağı gözden geçir", "Bulguları çöz", "Spec'i oluştur", "İş gereksinimlerini yaz", "Çıktıyı gözden geçir ve yayınla", "Sonucu göster"},
 }
 
 // stepName returns the plain name of step n (1-based) of skill, or "" when there is none.

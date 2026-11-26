@@ -539,6 +539,8 @@ func (d *Doc) PlanJSON() string {
 		Area      string   `json:"area,omitempty"`
 		Of        string   `json:"of,omitempty"`
 		BlockedBy []string `json:"blockedBy,omitempty"`
+		Steps     []string `json:"steps,omitempty"`
+		Include   []string `json:"include,omitempty"`
 	}
 	doc := struct {
 		SpecID      string `json:"specId"`
@@ -551,7 +553,7 @@ func (d *Doc) PlanJSON() string {
 		if t.DependsOn == nil {
 			t.DependsOn = []string{}
 		}
-		doc.Tasks = append(doc.Tasks, tk{t.Ref, t.Title, t.Summary, t.Slug, t.Change, t.Risk, t.ACs, t.DependsOn, t.Scope, t.Area, t.Of, t.BlockedBy})
+		doc.Tasks = append(doc.Tasks, tk{t.Ref, t.Title, t.Summary, t.Slug, t.Change, t.Risk, t.ACs, t.DependsOn, t.Scope, t.Area, t.Of, t.BlockedBy, t.Steps, t.Include})
 	}
 	b, _ := marshal(doc)
 	var buf bytes.Buffer

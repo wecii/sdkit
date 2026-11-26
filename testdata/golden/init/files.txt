@@ -30,6 +30,7 @@ README.md ->
 .agents/skills/generate-design/SKILL.md
 .agents/skills/generate-design/references/process-model.md
 .agents/skills/generate-specs/SKILL.md
+.agents/skills/generate-specs/references/business-requirements.md
 .agents/skills/generate-specs/references/generate.md
 .agents/skills/generate-specs/references/propose.md
 .agents/skills/generate-specs/references/review.md
@@ -64,6 +65,7 @@ README.md ->
 .codex/agents/engineer.toml
 .codex/agents/flow-modeler.toml
 .codex/agents/prespec-gaps.toml
+.codex/agents/requirements-writer.toml
 .codex/agents/reviewer.toml
 .codex/agents/scout.toml
 .codex/agents/security-auditor.toml
@@ -110,6 +112,7 @@ AGENTS.md
 .sdkit/pricing.json
 .sdkit/project.md
 .sdkit/review.d/adr.env
+.sdkit/review.d/business-requirements.env
 .sdkit/review.d/feature-spec.env
 .sdkit/review.d/prd.env
 .sdkit/rules/README.md
